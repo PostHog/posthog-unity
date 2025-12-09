@@ -1,0 +1,57 @@
+# EditorConfig for PostHog Unity SDK
+# https://editorconfig.org
+# Style rules aligned with posthog-dotnet
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.cs]
+# Omit accessibility modifiers when they are the default (e.g., private for class members)
+# Note: This removes 'private' from members and 'internal' from types
+# posthog-dotnet style: explicit 'internal' on types, implicit 'private' on members
+dotnet_style_require_accessibility_modifiers = omit_if_default:warning
+
+# Namespace preferences - file-scoped namespaces like posthog-dotnet
+# Note: Unity 2021.3 uses C# 9.0 which supports file-scoped namespaces
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# var preferences - match posthog-dotnet style
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Expression-bodied members
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
+
+# Braces - always use braces
+csharp_prefer_braces = true:suggestion
+
+# Null checking
+csharp_style_throw_expression = true:suggestion
+csharp_style_conditional_delegate_call = true:suggestion
+
+# Modifier ordering
+csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async:suggestion
+
+# Naming conventions - private fields with underscore prefix
+dotnet_naming_rule.private_fields_should_be_camel_case.severity = suggestion
+dotnet_naming_rule.private_fields_should_be_camel_case.symbols = private_fields
+dotnet_naming_rule.private_fields_should_be_camel_case.style = camel_case_underscore_prefix
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.camel_case_underscore_prefix.capitalization = camel_case
+dotnet_naming_style.camel_case_underscore_prefix.required_prefix = _
+
+[*.{json,xml,asmdef}]
+indent_size = 2

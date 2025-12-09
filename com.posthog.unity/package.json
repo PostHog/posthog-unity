@@ -1,0 +1,35 @@
+{
+    "name": "com.posthog.unity",
+    "version": "1.0.0",
+    "displayName": "PostHog Analytics",
+    "description": "PostHog analytics SDK for Unity. Capture events, identify users, and track sessions.",
+    "unity": "2021.3",
+    "unityRelease": "0f1",
+    "documentationUrl": "https://posthog.com/docs/libraries/unity",
+    "changelogUrl": "https://github.com/PostHog/posthog-unity/blob/main/CHANGELOG.md",
+    "licensesUrl": "https://github.com/PostHog/posthog-unity/blob/main/LICENSE",
+    "keywords": [
+        "analytics",
+        "posthog",
+        "events",
+        "tracking",
+        "feature-flags"
+    ],
+    "author": {
+        "name": "PostHog",
+        "email": "hey@posthog.com",
+        "url": "https://posthog.com"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/PostHog/posthog-unity.git"
+    },
+    "dependencies": {},
+    "samples": [
+        {
+            "displayName": "Basic Usage",
+            "description": "Basic example showing how to initialize PostHog and capture events",
+            "path": "Samples~/BasicUsage"
+        }
+    ]
+}
