@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#/ Usage: bin/test [options]
+#/ Description: Runs all unit tests.
+#/ Options:
+#/   --filter <filter>  Filter expression to select tests to run
+#/   --verbose          Show detailed test output
+source bin/helpers/_utils.sh
+set_source_and_root_dir
+
+TEST_PROJECT="./tests/PostHog.Unity.Tests/PostHog.Unity.Tests.csproj"
+
+filter=""
+verbose=""
+
+while (( "$#" )); do
+    key="$1"
+    shift
+    case "$key" in
+        --filter)
+            filter="--filter $1"
+            shift
+        ;;
+        --verbose|-v)
+            verbose="--logger \"console;verbosity=detailed\""
+        ;;
+        -\?|-h|--help)
+            grep '^#/' <"$0" | cut -c4-
+            exit
+        ;;
+    esac
+done
+
+# Ensure dotnet is available
+if ! type dotnet >/dev/null 2>&1; then
+    echo ".NET CLI is not installed!" 1>&2
+    exit 1
+fi
+
+echo "Running tests..."
+
+# shellcheck disable=SC2086
+if dotnet test "$TEST_PROJECT" --nologo $filter $verbose; then
+    echo "All tests passed!"
+else
+    echo "Tests failed!" 1>&2
+    exit 1
+fi

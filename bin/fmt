@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#/ Usage: bin/fmt [-c|--check]
+#/ Description: Formats all C# files in the Unity package and tests.
+#/ Options:
+#/   -c, --check - Run in check mode. Will return a non-zero exit code if anything needs reformatting.
+source bin/helpers/_utils.sh
+set_source_and_root_dir
+
+PACKAGE_DIR="./com.posthog.unity"
+TESTS_DIR="./tests"
+
+check=false
+
+while (( "$#" )); do
+    key="$1"
+    shift
+    case "$key" in
+        -c|--check)
+            check=true
+            ;;
+        -\?|-h|--help)
+            grep '^#/' <"$0" | cut -c4-
+            exit
+        ;;
+    esac
+done
+
+if $check; then
+    echo "Running in check mode: Will return a non-zero exit code if anything needs reformatting."
+else
+    echo "Running in reformat mode: Will automatically reformat files if they need reformatting."
+fi
+
+success=true
+
+# Ensure dotnet is available
+if ! type dotnet >/dev/null 2>&1; then
+    echo ".NET CLI is not installed!" 1>&2
+    exit 1
+fi
+
+# Check if dotnet-csharpier is installed, install if not
+if ! dotnet tool list -g | grep -q csharpier; then
+    echo "Installing CSharpier..."
+    dotnet tool install -g csharpier
+fi
+
+# Add .NET tools to PATH
+export PATH="$PATH:$HOME/.dotnet/tools"
+
+echo "Running CSharpier on $PACKAGE_DIR and $TESTS_DIR..."
+
+if $check; then
+    if ! csharpier check "$PACKAGE_DIR" "$TESTS_DIR"; then
+        success=false
+    fi
+else
+    if ! csharpier format "$PACKAGE_DIR" "$TESTS_DIR"; then
+        success=false
+    fi
+fi
+
+# Run dotnet format for style rules (like removing explicit private modifiers)
+# This requires the files to be part of a project/solution, so we create a temporary one
+echo "Running dotnet format for style rules..."
+
+TEMP_PROJECT="$PACKAGE_DIR/.temp-format.csproj"
+
+# Create a temporary project file for dotnet format
+cat > "$TEMP_PROJECT" << 'PROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.cs" Exclude="Samples~/**/*.cs" />
+  </ItemGroup>
+</Project>
+PROJ
+
+if $check; then
+    if ! dotnet format style "$TEMP_PROJECT" --verify-no-changes --diagnostics IDE0040 2>/dev/null; then
+        echo "Style issues found (e.g., explicit private modifiers). Run 'bin/fmt' to fix."
+        success=false
+    fi
+else
+    dotnet format style "$TEMP_PROJECT" --diagnostics IDE0040 2>/dev/null || true
+fi
+
+# Clean up temporary project
+rm -f "$TEMP_PROJECT"
+
+if $success; then
+    echo "You're all good!"
+else
+    echo "Formatting is no good! Run 'bin/fmt' to fix" 1>&2
+    exit 1
+fi

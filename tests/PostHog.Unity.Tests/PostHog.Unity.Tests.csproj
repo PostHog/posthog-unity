@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>disable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="coverlet.collector" Version="6.0.2" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+        <PackageReference Include="xunit" Version="2.9.2" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <!-- Reference the Unity package source files directly -->
+    <ItemGroup>
+        <Compile Include="../../com.posthog.unity/Runtime/**/*.cs" LinkBase="Runtime" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Unity stub assemblies for compilation -->
+        <PackageReference Include="Unity3D.SDK" Version="2021.1.14.1" />
+    </ItemGroup>
+
+    <PropertyGroup>
+        <!-- Suppress framework compatibility warning for Unity stubs -->
+        <NoWarn>NU1701</NoWarn>
+    </PropertyGroup>
+</Project>

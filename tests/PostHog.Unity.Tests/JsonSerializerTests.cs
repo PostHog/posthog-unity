@@ -97,7 +97,7 @@ public class JsonSerializerTests
             {
                 ["name"] = "test",
                 ["count"] = 42,
-                ["active"] = true
+                ["active"] = true,
             };
             var result = JsonSerializer.Serialize(dict);
 
@@ -113,7 +113,7 @@ public class JsonSerializerTests
         {
             var dict = new Dictionary<string, object>
             {
-                ["outer"] = new Dictionary<string, object> { ["inner"] = "value" }
+                ["outer"] = new Dictionary<string, object> { ["inner"] = "value" },
             };
             var result = JsonSerializer.Serialize(dict);
             Assert.Equal("{\"outer\":{\"inner\":\"value\"}}", result);
@@ -166,7 +166,7 @@ public class JsonSerializerTests
             var props = new Dictionary<string, object>
             {
                 ["$lib"] = "posthog-unity",
-                ["custom"] = "value"
+                ["custom"] = "value",
             };
             var evt = new PostHogEvent("test_event", "user123", props);
 
@@ -197,7 +197,7 @@ public class JsonSerializerTests
             var events = new List<PostHogEvent>
             {
                 new("event1", "user1", new Dictionary<string, object>()),
-                new("event2", "user2", new Dictionary<string, object>())
+                new("event2", "user2", new Dictionary<string, object>()),
             };
             var payload = new BatchPayload("test_api_key", events);
 
