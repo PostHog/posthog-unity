@@ -209,11 +209,11 @@ namespace PostHog
 
         IStorageProvider CreateStorageProvider()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+    #if UNITY_WEBGL && !UNITY_EDITOR
             return new PlayerPrefsStorageProvider();
-#else
+    #else
             return new FileStorageProvider();
-#endif
+    #endif
         }
 
         #endregion
@@ -344,13 +344,13 @@ namespace PostHog
 
         void AddSdkProperties(Dictionary<string, object> properties)
         {
-            properties["$lib"] = "posthog-unity";
-            properties["$lib_version"] = GetSdkVersion();
+            properties["$lib"] = SdkInfo.LibraryName;
+            properties["$lib_version"] = SdkInfo.Version;
 
             // Add device/platform properties
-            properties["$os"] = GetOperatingSystem();
+            properties["$os"] = PlatformInfo.GetOperatingSystem();
             properties["$os_version"] = SystemInfo.operatingSystem;
-            properties["$device_type"] = GetDeviceType();
+            properties["$device_type"] = PlatformInfo.GetDeviceType();
             properties["$device_manufacturer"] = SystemInfo.deviceModel;
             properties["$device_model"] = SystemInfo.deviceModel;
             properties["$screen_width"] = UnityEngine.Screen.width;
@@ -970,41 +970,6 @@ namespace PostHog
                 return false;
             }
             return true;
-        }
-
-        static string GetSdkVersion()
-        {
-            return "1.0.0"; // TODO: Read from package.json
-        }
-
-        static string GetOperatingSystem()
-        {
-#if UNITY_IOS
-            return "iOS";
-#elif UNITY_ANDROID
-            return "Android";
-#elif UNITY_WEBGL
-            return "WebGL";
-#elif UNITY_STANDALONE_WIN
-            return "Windows";
-#elif UNITY_STANDALONE_OSX
-            return "macOS";
-#elif UNITY_STANDALONE_LINUX
-            return "Linux";
-#else
-            return Application.platform.ToString();
-#endif
-        }
-
-        static string GetDeviceType()
-        {
-#if UNITY_IOS || UNITY_ANDROID
-            return "Mobile";
-#elif UNITY_WEBGL
-            return "Web";
-#else
-            return "Desktop";
-#endif
         }
 
         #endregion
