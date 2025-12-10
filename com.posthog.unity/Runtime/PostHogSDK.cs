@@ -174,6 +174,12 @@ namespace PostHog
         {
             _eventQueue?.Stop();
             _eventQueue?.Flush();
+
+            // Wait for any pending file writes to complete
+            if (_storage is FileStorageProvider fileStorage)
+            {
+                fileStorage.FlushPendingWrites();
+            }
         }
 
         IStorageProvider CreateStorageProvider()
@@ -869,12 +875,25 @@ namespace PostHog
         {
             _sessionManager.OnBackground();
             _eventQueue.Flush();
+
+            // Synchronously flush pending file writes before backgrounding
+            // to ensure data is persisted before the app may be suspended
+            if (_storage is FileStorageProvider fileStorage)
+            {
+                fileStorage.FlushPendingWrites();
+            }
         }
 
         void OnAppQuit()
         {
             _eventQueue.Stop();
             _eventQueue.Flush();
+
+            // Synchronously flush pending file writes before quitting
+            if (_storage is FileStorageProvider fileStorage)
+            {
+                fileStorage.FlushPendingWrites();
+            }
         }
 
         #endregion

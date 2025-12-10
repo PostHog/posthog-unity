@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace PostHog
@@ -9,6 +12,7 @@ namespace PostHog
     /// <summary>
     /// File-based storage provider for Standalone and Mobile platforms.
     /// Uses one file per event for crash resilience.
+    /// File I/O is performed on a background thread to avoid blocking the main thread.
     /// </summary>
     public class FileStorageProvider : IStorageProvider
     {
@@ -16,6 +20,10 @@ namespace PostHog
         string _statePath;
         readonly object _lock = new object();
         List<string> _eventIndex;
+
+        // Track pending writes so we can wait for them on shutdown
+        readonly ConcurrentDictionary<string, Task> _pendingWrites =
+            new ConcurrentDictionary<string, Task>();
 
         public void Initialize(string basePath)
         {
@@ -64,29 +72,57 @@ namespace PostHog
 
         public void SaveEvent(string id, string jsonData)
         {
+            // Add to index immediately so the event is counted
             lock (_lock)
+            {
+                if (!_eventIndex.Contains(id))
+                {
+                    _eventIndex.Add(id);
+                }
+            }
+
+            // Write file on background thread to avoid blocking main thread
+            // Note: We don't call PostHogLogger from inside Task.Run() because
+            // UnityEngine.Debug.Log() is not thread-safe
+            var filePath = GetEventFilePath(id);
+            var writeTask = Task.Run(() =>
             {
                 try
                 {
-                    var filePath = GetEventFilePath(id);
                     File.WriteAllText(filePath, jsonData);
-
-                    if (!_eventIndex.Contains(id))
-                    {
-                        _eventIndex.Add(id);
-                    }
-
-                    PostHogLogger.Debug($"Saved event {id}");
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    PostHogLogger.Error($"Failed to save event {id}", ex);
+                    // Remove from index if write failed
+                    lock (_lock)
+                    {
+                        _eventIndex.Remove(id);
+                    }
                 }
-            }
+                finally
+                {
+                    _pendingWrites.TryRemove(id, out _);
+                }
+            });
+
+            _pendingWrites[id] = writeTask;
         }
 
         public string LoadEvent(string id)
         {
+            // Wait for any pending write for this event to complete
+            if (_pendingWrites.TryGetValue(id, out var pendingWrite))
+            {
+                try
+                {
+                    pendingWrite.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // Write failed, but we'll handle that below
+                }
+            }
+
             lock (_lock)
             {
                 try
@@ -111,6 +147,19 @@ namespace PostHog
 
         public void DeleteEvent(string id)
         {
+            // Wait for any pending write for this event to complete before deleting
+            if (_pendingWrites.TryGetValue(id, out var pendingWrite))
+            {
+                try
+                {
+                    pendingWrite.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // Write failed, continue with deletion anyway
+                }
+            }
+
             lock (_lock)
             {
                 try
@@ -137,6 +186,9 @@ namespace PostHog
 
         public void Clear()
         {
+            // Wait for all pending writes before clearing
+            FlushPendingWrites();
+
             lock (_lock)
             {
                 try
@@ -151,6 +203,31 @@ namespace PostHog
                 catch (Exception ex)
                 {
                     PostHogLogger.Error("Failed to clear events", ex);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Waits for all pending file writes to complete.
+        /// Call this before app shutdown to ensure all events are persisted.
+        /// </summary>
+        public void FlushPendingWrites()
+        {
+            var pendingTasks = _pendingWrites.Values.ToArray();
+            if (pendingTasks.Length > 0)
+            {
+                PostHogLogger.Debug(
+                    $"Waiting for {pendingTasks.Length} pending writes to complete"
+                );
+                try
+                {
+                    Task.WaitAll(pendingTasks);
+                }
+                catch (AggregateException ex)
+                {
+                    PostHogLogger.Warning(
+                        $"Some pending writes failed: {ex.InnerExceptions.Count} errors"
+                    );
                 }
             }
         }
