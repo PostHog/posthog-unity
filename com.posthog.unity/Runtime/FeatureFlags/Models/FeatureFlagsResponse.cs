@@ -8,6 +8,12 @@ namespace PostHog
     class FeatureFlagsResponse
     {
         /// <summary>
+        /// Current schema version for cached flags.
+        /// This corresponds to the API version used in the /flags endpoint (v=2).
+        /// </summary>
+        internal const int CurrentVersion = 2;
+
+        /// <summary>
         /// Whether errors occurred while computing flags server-side.
         /// </summary>
         public bool ErrorsWhileComputingFlags { get; set; }
@@ -50,6 +56,26 @@ namespace PostHog
         {
             if (dict == null)
                 return null;
+
+            // Check version - unversioned data treated as v1
+            var version = 1;
+            if (dict.TryGetValue("_version", out var versionObj))
+            {
+                version = versionObj switch
+                {
+                    int i => i,
+                    long l => (int)l,
+                    double d => (int)d,
+                    _ => 1,
+                };
+            }
+
+            if (version > CurrentVersion)
+            {
+                PostHogLogger.Warning(
+                    $"Feature flags cache version {version} is newer than supported version {CurrentVersion}, data may be incompatible"
+                );
+            }
 
             var response = new FeatureFlagsResponse();
 
@@ -128,6 +154,7 @@ namespace PostHog
         {
             var dict = new Dictionary<string, object>
             {
+                ["_version"] = CurrentVersion,
                 ["errorsWhileComputingFlags"] = ErrorsWhileComputingFlags,
             };
 

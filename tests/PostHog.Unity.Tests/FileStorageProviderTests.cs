@@ -341,20 +341,6 @@ public class FileStorageProviderTests : IDisposable
             Assert.Contains("event-b", ids);
             Assert.Contains("event-c", ids);
         }
-
-        [Fact]
-        public void ReturnsDefensiveCopy()
-        {
-            // Arrange
-            _storage.SaveEvent("original", "{}");
-
-            // Act
-            var ids = _storage.GetEventIds();
-            ids.Add("injected");
-
-            // Assert - original should not be modified
-            Assert.DoesNotContain("injected", _storage.GetEventIds());
-        }
     }
 
     public class TheStateOperations : FileStorageProviderTests

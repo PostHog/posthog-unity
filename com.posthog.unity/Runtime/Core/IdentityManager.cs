@@ -9,6 +9,7 @@ namespace PostHog
     class IdentityManager
     {
         const string IdentityStateKey = "identity";
+        const int CurrentVersion = 1;
 
         readonly PostHogConfig _config;
         readonly IStorageProvider _storage;
@@ -171,6 +172,27 @@ namespace PostHog
                     var state = JsonSerializer.DeserializeDictionary(json);
                     if (state != null)
                     {
+                        // Check version - unversioned data treated as v1
+                        var version = 1;
+                        if (state.TryGetValue("_version", out var versionObj))
+                        {
+                            version = versionObj switch
+                            {
+                                int i => i,
+                                long l => (int)l,
+                                double d => (int)d,
+                                _ => 1,
+                            };
+                        }
+
+                        if (version > CurrentVersion)
+                        {
+                            PostHogLogger.Warning(
+                                $"Identity state version {version} is newer than supported version {CurrentVersion}, data may be incompatible"
+                            );
+                        }
+
+                        // v1 schema - all versions so far use this
                         _anonymousId = state.TryGetValue("anonymousId", out var anonId)
                             ? anonId?.ToString()
                             : null;
@@ -195,7 +217,7 @@ namespace PostHog
                         }
 
                         PostHogLogger.Debug(
-                            $"Loaded identity: distinctId={_distinctId}, anonymousId={_anonymousId}, isIdentified={_isIdentified}"
+                            $"Loaded identity (v{version}): distinctId={_distinctId}, anonymousId={_anonymousId}, isIdentified={_isIdentified}"
                         );
                     }
                 }
@@ -220,6 +242,7 @@ namespace PostHog
             {
                 var state = new Dictionary<string, object>
                 {
+                    ["_version"] = CurrentVersion,
                     ["anonymousId"] = _anonymousId,
                     ["distinctId"] = _distinctId,
                     ["isIdentified"] = _isIdentified,
