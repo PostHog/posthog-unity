@@ -162,6 +162,20 @@ namespace PostHog
             PostHogSDK.GetFeatureFlagPayload(key, defaultValue);
 
         /// <summary>
+        /// Gets the payload attached to a feature flag as a PostHogJson object.
+        /// Provides easy access to nested JSON values with type-safe accessors.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <returns>The payload as PostHogJson, or PostHogJson.Null if not found</returns>
+        /// <example>
+        /// var payload = PostHog.GetFeatureFlagPayloadJson("checkout-config");
+        /// var theme = payload["theme"].GetString("light");
+        /// var maxItems = payload["settings"]["maxItems"].GetInt(10);
+        /// </example>
+        public static PostHogJson GetFeatureFlagPayloadJson(string key) =>
+            PostHogSDK.GetFeatureFlagPayloadJson(key);
+
+        /// <summary>
         /// Reloads feature flags from the server.
         /// </summary>
         public static void ReloadFeatureFlags() => PostHogSDK.ReloadFeatureFlags();

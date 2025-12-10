@@ -1,6 +1,19 @@
+using System;
 using System.Collections.Generic;
 using PostHog;
 using UnityEngine;
+
+/// <summary>
+/// Example payload class for feature flag deserialization.
+/// Note: Must be [Serializable] with public fields for Unity's JsonUtility.
+/// </summary>
+[Serializable]
+public class CheckoutConfig
+{
+    public string theme;
+    public int maxItems;
+    public bool showBanner;
+}
 
 /// <summary>
 /// Example demonstrating basic PostHog SDK usage.
@@ -125,11 +138,36 @@ public class PostHogExample : MonoBehaviour
         string variant = PostHog.PostHog.GetFeatureFlag<string>("experiment-variant", "control");
         Debug.Log($"Experiment variant: {variant}");
 
-        // Get a flag payload (attached JSON data)
-        var config = PostHog.PostHog.GetFeatureFlagPayload("checkout-config");
+        // Option 1: Deserialize payload directly to a typed class
+        // Requires [Serializable] class with public fields (see CheckoutConfig above)
+        var config = PostHog.PostHog.GetFeatureFlagPayload<CheckoutConfig>("checkout-config");
         if (config != null)
         {
-            Debug.Log($"Checkout config: {config}");
+            Debug.Log($"Config - Theme: {config.theme}, Max: {config.maxItems}");
+        }
+
+        // Option 2: Use PostHogJson for dynamic/nested access
+        var payload = PostHog.PostHog.GetFeatureFlagPayloadJson("checkout-config");
+        if (!payload.IsNull)
+        {
+            // Access values with type-safe methods and defaults
+            string theme = payload["theme"].GetString("light");
+            int maxItems = payload["settings"]["maxItems"].GetInt(10);
+
+            // Access deeply nested values by path
+            string buttonColor = payload.GetPath("styles.button.color").GetString("#000");
+
+            Debug.Log($"Theme: {theme}, Max Items: {maxItems}, Button: {buttonColor}");
+
+            // Iterate over arrays
+            var features = payload["enabledFeatures"].AsList();
+            if (features != null)
+            {
+                foreach (var feature in features)
+                {
+                    Debug.Log($"Feature enabled: {feature.GetString()}");
+                }
+            }
         }
     }
 

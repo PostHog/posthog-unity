@@ -136,14 +136,52 @@ if (PostHog.IsFeatureEnabled("new-checkout-flow"))
 // Get a multivariate flag value
 string variant = PostHog.GetFeatureFlag<string>("experiment-variant", "control");
 
-// Get a flag payload (attached JSON data)
-var config = PostHog.GetFeatureFlagPayload("checkout-config");
-
 // Manually reload flags
 PostHog.ReloadFeatureFlags(() => Debug.Log("Flags reloaded!"));
 
 // Listen for flag updates
 PostHog.OnFeatureFlagsLoaded += () => UpdateUI();
+```
+
+### Typed Payload Deserialization
+
+Deserialize payloads directly to your own classes:
+
+```csharp
+// Define your payload class (must use [Serializable] and public fields for JsonUtility)
+[Serializable]
+public class CheckoutConfig
+{
+    public string theme;
+    public int maxItems;
+    public bool showBanner;
+}
+
+// Deserialize directly to your type
+var config = PostHog.GetFeatureFlagPayload<CheckoutConfig>("checkout-config");
+Debug.Log($"Theme: {config.theme}, Max items: {config.maxItems}");
+```
+
+For Newtonsoft.Json or other libraries, set a custom deserializer:
+
+```csharp
+PostHog.Setup(new PostHogConfig
+{
+    ApiKey = "phc_...",
+    // Use Newtonsoft.Json for better compatibility (properties, complex types)
+    PayloadDeserializer = (json, type) => JsonConvert.DeserializeObject(json, type)
+});
+```
+
+### Dynamic Payload Access
+
+For dynamic or nested payloads, use `PostHogJson`:
+
+```csharp
+var payload = PostHog.GetFeatureFlagPayloadJson("checkout-config");
+string theme = payload["theme"].GetString("light");
+int maxItems = payload["settings"]["maxItems"].GetInt(10);
+string color = payload.GetPath("styles.button.color").GetString("#000");
 ```
 
 ### Flag Targeting Properties
@@ -178,7 +216,10 @@ PostHog.Setup(new PostHogConfig
     PreloadFeatureFlags = true,           // Fetch flags on init (default: true)
     SendFeatureFlagEvent = true,          // Track flag usage (default: true)
     SendDefaultPersonPropertiesForFlags = true, // Include device info (default: true)
-    OnFeatureFlagsLoaded = () => Debug.Log("Flags ready!")
+    OnFeatureFlagsLoaded = () => Debug.Log("Flags ready!"),
+
+    // Optional: Custom deserializer for typed payloads (e.g., Newtonsoft.Json)
+    PayloadDeserializer = (json, type) => JsonConvert.DeserializeObject(json, type)
 });
 ```
 
