@@ -17,19 +17,19 @@ namespace PostHog
         const int MaxEventSize = 50000; // ~50KB per event max
 
         readonly object _lock = new object();
-        List<string> _eventIndex;
+        List<string> _eventIds;
 
         public void Initialize(string basePath)
         {
             // basePath is ignored for PlayerPrefs
-            LoadEventIndex();
+            LoadEventIds();
         }
 
-        void LoadEventIndex()
+        void LoadEventIds()
         {
             lock (_lock)
             {
-                _eventIndex = new List<string>();
+                _eventIds = new List<string>();
 
                 try
                 {
@@ -46,13 +46,13 @@ namespace PostHog
                             && idsObj is List<object> ids
                         )
                         {
-                            _eventIndex = ids.Select(o => o?.ToString())
+                            _eventIds = ids.Select(o => o?.ToString())
                                 .Where(s => !string.IsNullOrEmpty(s))
                                 .ToList();
                         }
                     }
 
-                    PostHogLogger.Debug($"Loaded {_eventIndex.Count} events from PlayerPrefs");
+                    PostHogLogger.Debug($"Loaded {_eventIds.Count} events from PlayerPrefs");
                 }
                 catch (Exception ex)
                 {
@@ -61,11 +61,11 @@ namespace PostHog
             }
         }
 
-        void SaveEventIndex()
+        void SaveEventIds()
         {
             try
             {
-                var json = "[" + string.Join(",", _eventIndex.Select(id => $"\"{id}\"")) + "]";
+                var json = "[" + string.Join(",", _eventIds.Select(id => $"\"{id}\"")) + "]";
                 PlayerPrefs.SetString(EventIndexKey, json);
                 PlayerPrefs.Save();
             }
@@ -92,10 +92,10 @@ namespace PostHog
 
                     PlayerPrefs.SetString(EventPrefix + id, jsonData);
 
-                    if (!_eventIndex.Contains(id))
+                    if (!_eventIds.Contains(id))
                     {
-                        _eventIndex.Add(id);
-                        SaveEventIndex();
+                        _eventIds.Add(id);
+                        SaveEventIds();
                     }
 
                     PlayerPrefs.Save();
@@ -123,8 +123,8 @@ namespace PostHog
                 catch (Exception ex)
                 {
                     PostHogLogger.Error($"Failed to load event {id} from PlayerPrefs", ex);
-                    _eventIndex.Remove(id);
-                    SaveEventIndex();
+                    _eventIds.Remove(id);
+                    SaveEventIds();
                 }
 
                 return null;
@@ -138,8 +138,8 @@ namespace PostHog
                 try
                 {
                     PlayerPrefs.DeleteKey(EventPrefix + id);
-                    _eventIndex.Remove(id);
-                    SaveEventIndex();
+                    _eventIds.Remove(id);
+                    SaveEventIds();
                     PostHogLogger.Debug($"Deleted event {id} from PlayerPrefs");
                 }
                 catch (Exception ex)
@@ -153,8 +153,7 @@ namespace PostHog
         {
             lock (_lock)
             {
-                // Return a defensive copy as IReadOnlyList to prevent modification
-                return new List<string>(_eventIndex);
+                return _eventIds.AsReadOnly();
             }
         }
 
@@ -162,7 +161,7 @@ namespace PostHog
         {
             lock (_lock)
             {
-                return _eventIndex.Count;
+                return _eventIds.Count;
             }
         }
 
@@ -172,12 +171,12 @@ namespace PostHog
             {
                 try
                 {
-                    foreach (var id in _eventIndex.ToList())
+                    foreach (var id in _eventIds.ToList())
                     {
                         PlayerPrefs.DeleteKey(EventPrefix + id);
                     }
-                    _eventIndex.Clear();
-                    SaveEventIndex();
+                    _eventIds.Clear();
+                    SaveEventIds();
                     PostHogLogger.Debug("Cleared all events from PlayerPrefs");
                 }
                 catch (Exception ex)
