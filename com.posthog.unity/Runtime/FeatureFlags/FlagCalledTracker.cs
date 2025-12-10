@@ -50,9 +50,9 @@ namespace PostHog
         /// </summary>
         static string CreateKey(string distinctId, string flagKey, object value)
         {
-            // Normalize value to string representation
+            // Use string.Concat to avoid allocation from string interpolation
             var valueStr = value?.ToString() ?? "null";
-            return $"{distinctId}:{flagKey}:{valueStr}";
+            return string.Concat(distinctId, ":", flagKey, ":", valueStr);
         }
     }
 }

@@ -33,7 +33,8 @@ public class FlagCacheTests
             _eventIds.Remove(id);
         }
 
-        public List<string> GetEventIds() => new(_eventIds);
+        public IReadOnlyList<string> GetEventIds() => new List<string>(_eventIds);
+        public int GetEventCount() => _eventIds.Count;
 
         public void Clear()
         {

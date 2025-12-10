@@ -149,11 +149,20 @@ namespace PostHog
             }
         }
 
-        public List<string> GetEventIds()
+        public IReadOnlyList<string> GetEventIds()
         {
             lock (_lock)
             {
+                // Return a defensive copy as IReadOnlyList to prevent modification
                 return new List<string>(_eventIndex);
+            }
+        }
+
+        public int GetEventCount()
+        {
+            lock (_lock)
+            {
+                return _eventIndex.Count;
             }
         }
 

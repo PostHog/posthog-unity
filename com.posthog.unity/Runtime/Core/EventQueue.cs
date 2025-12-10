@@ -125,7 +125,7 @@ namespace PostHog
             {
                 lock (_lock)
                 {
-                    return _storage.GetEventIds().Count;
+                    return _storage.GetEventCount();
                 }
             }
         }
