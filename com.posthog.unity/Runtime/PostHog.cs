@@ -52,6 +52,17 @@ namespace PostHog
         ) => PostHogSDK.Screen(screenName, properties);
 
         /// <summary>
+        /// Manually captures an exception.
+        /// Use this for handled exceptions that you want to report to PostHog.
+        /// </summary>
+        /// <param name="exception">The exception to capture</param>
+        /// <param name="properties">Optional additional properties</param>
+        public static void CaptureException(
+            Exception exception,
+            Dictionary<string, object> properties = null
+        ) => PostHogSDK.CaptureException(exception, properties);
+
+        /// <summary>
         /// Identifies the current user with a known ID.
         /// Reloads feature flags for the new identity before completing.
         /// </summary>
