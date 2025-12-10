@@ -235,7 +235,7 @@ namespace PostHog.Editor
             {
                 EditorGUILayout.HelpBox(
                     "Auto-initialize is enabled but this asset is not in a Resources folder. "
-                        + "Move it to Assets/Resources/PostHogSettings.asset for auto-initialization to work.",
+                        + "Move it to any 'Resources' folder and name it 'PostHogSettings.asset' for auto-initialization to work.",
                     MessageType.Warning
                 );
             }
@@ -277,7 +277,7 @@ namespace PostHog.Editor
                 {
                     EditorGUILayout.HelpBox(
                         "PostHog will initialize automatically on app start. "
-                            + "Ensure this asset is at Assets/Resources/PostHogSettings.asset",
+                            + "Ensure this asset is named 'PostHogSettings.asset' and located in a 'Resources' folder.",
                         MessageType.Info
                     );
                 }
