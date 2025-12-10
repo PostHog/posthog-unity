@@ -18,27 +18,43 @@ public class CheckoutConfig
 /// <summary>
 /// Example demonstrating basic PostHog SDK usage.
 /// Attach this to a GameObject in your scene.
+///
+/// RECOMMENDED SETUP (no code required):
+/// 1. Create a PostHogSettings asset: Assets > Create > PostHog > Settings in Resources
+/// 2. Configure your API key in the Inspector
+/// 3. PostHog initializes automatically on app start!
+///
+/// This example shows manual initialization for advanced use cases.
 /// </summary>
 public class PostHogExample : MonoBehaviour
 {
-    [Header("PostHog Configuration")]
+    [Header("Manual Configuration (Optional)")]
+    [Tooltip("Leave empty to use the PostHogSettings asset for auto-initialization.")]
     [SerializeField]
-    string apiKey = "phc_your_api_key_here";
+    string apiKey;
 
     [SerializeField]
     string host = "https://us.i.posthog.com";
 
     void Start()
     {
-        // Initialize the SDK
-        PostHog.PostHog.Setup(
-            new PostHogConfig
-            {
-                ApiKey = apiKey,
-                Host = host,
-                LogLevel = PostHogLogLevel.Debug, // Set to Warning or Error in production
-            }
-        );
+        // Option 1: Auto-initialization (RECOMMENDED)
+        // If you have a PostHogSettings asset in Resources, PostHog initializes automatically.
+        // No code needed! Just start capturing events.
+
+        // Option 2: Manual initialization
+        // Use this if you need to configure PostHog dynamically or without a settings asset.
+        if (!string.IsNullOrEmpty(apiKey) && !PostHog.PostHog.IsInitialized)
+        {
+            PostHog.PostHog.Setup(
+                new PostHogConfig
+                {
+                    ApiKey = apiKey,
+                    Host = host,
+                    LogLevel = PostHogLogLevel.Debug, // Set to Warning or Error in production
+                }
+            );
+        }
 
         // Capture a simple event
         PostHog.PostHog.Capture("app_started");
