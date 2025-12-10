@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+#/ Usage: bin/bootstrap
+#/ Description: Sets up development dependencies for the PostHog Unity SDK.
+set -euo pipefail
+source bin/helpers/_utils.sh
+set_source_and_root_dir
+
+echo "Bootstrapping PostHog Unity SDK development environment…"
+echo ""
+
+# Track if we need to install anything
+needs_install=false
+
+# Check for Homebrew (macOS)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if ! command -v brew &> /dev/null; then
+        echo "Homebrew is not installed."
+        echo "Install it from https://brew.sh or run:"
+        echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        echo ""
+        needs_install=true
+    fi
+fi
+
+# Check for jq
+if ! command -v jq &> /dev/null; then
+    echo "jq is not installed."
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &> /dev/null; then
+        read -r -p "Install jq with Homebrew? [Y/n]: " install_jq
+        install_jq="${install_jq:-Y}"
+        if [[ "$install_jq" =~ ^[Yy]$ ]]; then
+            brew install jq
+        else
+            needs_install=true
+        fi
+    else
+        echo "  Install with: brew install jq (macOS) or apt-get install jq (Linux)"
+        needs_install=true
+    fi
+    echo ""
+fi
+
+# Check for GitHub CLI
+if ! command -v gh &> /dev/null; then
+    echo "GitHub CLI (gh) is not installed."
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &> /dev/null; then
+        read -r -p "Install gh with Homebrew? [Y/n]: " install_gh
+        install_gh="${install_gh:-Y}"
+        if [[ "$install_gh" =~ ^[Yy]$ ]]; then
+            brew install gh
+        else
+            needs_install=true
+        fi
+    else
+        echo "  Install with: brew install gh (macOS) or see https://cli.github.com"
+        needs_install=true
+    fi
+    echo ""
+fi
+
+# Check gh authentication
+if command -v gh &> /dev/null; then
+    if ! gh auth status &> /dev/null; then
+        echo "GitHub CLI is not authenticated."
+        read -r -p "Authenticate now? [Y/n]: " auth_gh
+        auth_gh="${auth_gh:-Y}"
+        if [[ "$auth_gh" =~ ^[Yy]$ ]]; then
+            gh auth login
+        else
+            echo "  Run 'gh auth login' when ready."
+            needs_install=true
+        fi
+        echo ""
+    fi
+fi
+
+# Check for .NET SDK
+if ! command -v dotnet &> /dev/null; then
+    echo ".NET SDK is not installed."
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &> /dev/null; then
+        read -r -p "Install .NET SDK with Homebrew? [Y/n]: " install_dotnet
+        install_dotnet="${install_dotnet:-Y}"
+        if [[ "$install_dotnet" =~ ^[Yy]$ ]]; then
+            brew install dotnet
+        else
+            needs_install=true
+        fi
+    else
+        echo "  Install from https://dotnet.microsoft.com/download"
+        needs_install=true
+    fi
+    echo ""
+fi
+
+# Check for CSharpier (formatting tool)
+if command -v dotnet &> /dev/null; then
+    if ! dotnet tool list -g | grep -q csharpier; then
+        echo "CSharpier is not installed."
+        read -r -p "Install CSharpier globally? [Y/n]: " install_csharpier
+        install_csharpier="${install_csharpier:-Y}"
+        if [[ "$install_csharpier" =~ ^[Yy]$ ]]; then
+            dotnet tool install -g csharpier
+        else
+            echo "  Run 'dotnet tool install -g csharpier' when ready."
+            needs_install=true
+        fi
+        echo ""
+    fi
+fi
+
+# Summary
+echo ""
+if $needs_install; then
+    echo "Some dependencies are missing. Please install them and run bin/bootstrap again."
+    exit 1
+else
+    echo "All dependencies are installed!"
+    echo ""
+    echo "Available commands:"
+    echo "  bin/build     - Validate compilation"
+    echo "  bin/test      - Run tests"
+    echo "  bin/fmt       - Format code"
+    echo "  bin/release   - Create a release"
+fi

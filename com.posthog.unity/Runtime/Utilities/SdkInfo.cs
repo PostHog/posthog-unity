@@ -1,15 +1,10 @@
 namespace PostHog
 {
     /// <summary>
-    /// SDK information constants.
+    /// SDK information constants. Version is defined in SdkInfo.Generated.cs.
     /// </summary>
-    static class SdkInfo
+    static partial class SdkInfo
     {
-        /// <summary>
-        /// The current SDK version.
-        /// </summary>
-        public const string Version = "1.0.0";
-
         /// <summary>
         /// The SDK library name.
         /// </summary>

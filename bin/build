@@ -13,6 +13,7 @@
 #/
 #/ 2. Unity mode (-u): Uses Unity Editor in batch mode to compile the package
 #/    in a real Unity environment. More accurate but requires Unity.
+set -euo pipefail
 source bin/helpers/_utils.sh
 set_source_and_root_dir
 
@@ -90,19 +91,20 @@ MANIFEST
     # -batchmode: No UI
     # -nographics: No GPU required
     # -logFile -: Log to stdout
-    if "$unity_path" \
+    "$unity_path" \
         -batchmode \
         -nographics \
         -quit \
         -projectPath "$TEST_PROJECT_DIR" \
-        -logFile - 2>&1 | tee /tmp/unity-build.log | grep -E "(error|Error|ERROR|Compilation failed)"; then
-        echo "Build failed! Check /tmp/unity-build.log for details." 1>&2
-        exit 1
-    fi
+        -logFile - 2>&1 | tee /tmp/unity-build.log || true
 
-    # Check exit code from Unity (need to capture it differently due to pipe)
-    if grep -q "Compilation failed" /tmp/unity-build.log; then
-        echo "Build failed!" 1>&2
+    # Check for compilation errors in the log
+    if grep -qE "(Compilation failed|error CS[0-9]+:)" /tmp/unity-build.log; then
+        echo ""
+        echo "Build failed! Errors found:" 1>&2
+        grep -E "(error CS[0-9]+:|Compilation failed)" /tmp/unity-build.log 1>&2
+        echo ""
+        echo "Full log: /tmp/unity-build.log" 1>&2
         exit 1
     fi
 

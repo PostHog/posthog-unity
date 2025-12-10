@@ -1,6 +1,6 @@
 {
     "name": "com.posthog.unity",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "displayName": "PostHog Analytics",
     "description": "PostHog analytics SDK for Unity. Capture events, identify users, and track sessions.",
     "unity": "2021.3",
