@@ -60,6 +60,7 @@ PostHog.Setup(new PostHogConfig
     MaxQueueSize = 1000,                    // Max queued events
     MaxBatchSize = 50,                      // Max events per request
     CaptureApplicationLifecycleEvents = true,
+    CaptureExceptions = true,               // Auto-capture unhandled exceptions
     PersonProfiles = PersonProfiles.IdentifiedOnly,
     LogLevel = PostHogLogLevel.Warning
 });
@@ -253,6 +254,57 @@ When `CaptureApplicationLifecycleEvents` is enabled (default), these events are 
 - `Application Updated` - Version changed
 - `Application Opened` - App foregrounded
 - `Application Backgrounded` - App backgrounded
+
+## Error Tracking
+
+The SDK automatically captures unhandled exceptions and sends them to PostHog as `$exception` events. This is enabled by default.
+
+### Manual Exception Capture
+
+For handled exceptions that you want to report:
+
+```csharp
+try
+{
+    // Risky operation
+}
+catch (Exception e)
+{
+    PostHog.CaptureException(e);
+    // Handle the error gracefully
+}
+
+// With additional properties
+PostHog.CaptureException(e, new Dictionary<string, object>
+{
+    { "context", "checkout_flow" },
+    { "item_count", 5 }
+});
+```
+
+### Configuration
+
+```csharp
+PostHog.Setup(new PostHogConfig
+{
+    ApiKey = "phc_...",
+
+    // Exception tracking options
+    CaptureExceptions = true,              // Enable automatic capture (default: true)
+    ExceptionDebounceIntervalMs = 1000,    // Min ms between captures (default: 1000)
+    CaptureExceptionsInEditor = true       // Capture in Unity Editor (default: true)
+});
+```
+
+### Disabling Error Tracking
+
+```csharp
+PostHog.Setup(new PostHogConfig
+{
+    ApiKey = "phc_...",
+    CaptureExceptions = false  // Disable automatic exception capture
+});
+```
 
 ## Platform Support
 
