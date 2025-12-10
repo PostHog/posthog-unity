@@ -74,9 +74,6 @@ crashlytics-build.properties
 # Test project created by bin/build -u
 /TestProject/
 
-# Temporary build/format files
-.temp-*.csproj
-
 # Packed Addressables
 /[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
 
