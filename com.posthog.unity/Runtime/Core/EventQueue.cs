@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace PostHog
@@ -78,9 +77,9 @@ namespace PostHog
                 var eventIds = _storage.GetEventIds();
                 if (eventIds.Count >= _config.MaxQueueSize)
                 {
-                    // Drop oldest event
-                    var oldest = eventIds.First();
-                    _storage.DeleteEvent(oldest);
+                    // Drop oldest event - MaxQueueSize is validated to be >= 1,
+                    // so eventIds.Count > 0 is guaranteed here
+                    _storage.DeleteEvent(eventIds[0]);
                     PostHogLogger.Warning(
                         $"Queue full ({_config.MaxQueueSize}), dropped oldest event"
                     );
@@ -223,7 +222,13 @@ namespace PostHog
                         break;
                     }
 
-                    var batchIds = eventIds.Take(_adjustedMaxBatchSize).ToList();
+                    // Create batch list without LINQ allocation
+                    int batchSize = Math.Min(eventIds.Count, _adjustedMaxBatchSize);
+                    var batchIds = new List<string>(batchSize);
+                    for (int i = 0; i < batchSize; i++)
+                    {
+                        batchIds.Add(eventIds[i]);
+                    }
                     var events = LoadEvents(batchIds);
 
                     if (events.Count == 0)

@@ -2,8 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -53,13 +51,16 @@ namespace PostHog
                 {
                     if (Directory.Exists(_queuePath))
                     {
-                        var files = Directory
-                            .GetFiles(_queuePath, "*.json")
-                            .Select(Path.GetFileNameWithoutExtension)
-                            .OrderBy(f => f) // UUID v7 is time-sortable
-                            .ToList();
+                        // Avoid LINQ allocation - sort array in place
+                        var files = Directory.GetFiles(_queuePath, "*.json");
+                        Array.Sort(files); // UUID v7 filenames are time-sortable
 
-                        _eventIds = files;
+                        // Extract filenames without extension
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            _eventIds.Add(Path.GetFileNameWithoutExtension(files[i]));
+                        }
+
                         PostHogLogger.Debug($"Loaded {_eventIds.Count} events from disk");
                     }
                 }

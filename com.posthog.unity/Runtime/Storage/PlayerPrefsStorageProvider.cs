@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Text;
 using UnityEngine;
 
 namespace PostHog
@@ -46,9 +46,15 @@ namespace PostHog
                             && idsObj is List<object> ids
                         )
                         {
-                            _eventIds = ids.Select(o => o?.ToString())
-                                .Where(s => !string.IsNullOrEmpty(s))
-                                .ToList();
+                            // Use direct iteration instead of LINQ to avoid allocations
+                            foreach (var o in ids)
+                            {
+                                var s = o?.ToString();
+                                if (!string.IsNullOrEmpty(s))
+                                {
+                                    _eventIds.Add(s);
+                                }
+                            }
                         }
                     }
 
@@ -65,8 +71,19 @@ namespace PostHog
         {
             try
             {
-                var json = "[" + string.Join(",", _eventIds.Select(id => $"\"{id}\"")) + "]";
-                PlayerPrefs.SetString(EventIndexKey, json);
+                // Use StringBuilder to avoid LINQ allocation and string interpolation per item
+                var sb = new StringBuilder("[");
+                for (int i = 0; i < _eventIds.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        sb.Append(',');
+                    }
+                    // Event IDs are UUIDs (alphanumeric + hyphens only), no escaping needed
+                    sb.Append('"').Append(_eventIds[i]).Append('"');
+                }
+                sb.Append(']');
+                PlayerPrefs.SetString(EventIndexKey, sb.ToString());
                 PlayerPrefs.Save();
             }
             catch (Exception ex)

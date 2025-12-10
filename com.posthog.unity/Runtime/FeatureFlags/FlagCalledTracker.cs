@@ -50,8 +50,16 @@ namespace PostHog
         /// </summary>
         static string CreateKey(string distinctId, string flagKey, object value)
         {
-            // Use string.Concat to avoid allocation from string interpolation
-            var valueStr = value?.ToString() ?? "null";
+            // Special-case common types to avoid ToString() allocations
+            string valueStr = value switch
+            {
+                null => "null",
+                bool b => b ? "true" : "false",
+                string s => s,
+                int i => i.ToString(),
+                long l => l.ToString(),
+                _ => value.ToString(),
+            };
             return string.Concat(distinctId, ":", flagKey, ":", valueStr);
         }
     }

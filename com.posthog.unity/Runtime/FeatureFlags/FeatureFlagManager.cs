@@ -490,10 +490,27 @@ namespace PostHog
 
         Dictionary<string, object> GetMergedPersonProperties()
         {
-            var merged = new Dictionary<string, object>();
+            bool hasCustomProperties = _personPropertiesForFlags.Count > 0;
+            bool hasDefaultProperties = _config.SendDefaultPersonPropertiesForFlags;
+
+            // Fast path: no properties at all
+            if (!hasCustomProperties && !hasDefaultProperties)
+            {
+                return null;
+            }
+
+            // Fast path: only custom properties, no need to merge.
+            // Returns internal dictionary directly to avoid allocation - caller only serializes it.
+            if (hasCustomProperties && !hasDefaultProperties)
+            {
+                return _personPropertiesForFlags;
+            }
+
+            // Build merged dictionary only when necessary
+            var merged = new Dictionary<string, object>(7 + _personPropertiesForFlags.Count);
 
             // Add default properties if enabled
-            if (_config.SendDefaultPersonPropertiesForFlags)
+            if (hasDefaultProperties)
             {
                 merged["$app_version"] = Application.version;
                 merged["$app_build"] = Application.buildGUID;
@@ -510,7 +527,7 @@ namespace PostHog
                 merged[kvp.Key] = kvp.Value;
             }
 
-            return merged.Count > 0 ? merged : null;
+            return merged;
         }
 
         #endregion

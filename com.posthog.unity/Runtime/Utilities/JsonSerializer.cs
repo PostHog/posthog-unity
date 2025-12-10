@@ -22,34 +22,45 @@ namespace PostHog
         public static string SerializeEvent(PostHogEvent evt)
         {
             var sb = new StringBuilder();
-            sb.Append("{");
-            sb.Append($"\"uuid\":{EscapeString(evt.Uuid)},");
-            sb.Append($"\"event\":{EscapeString(evt.Event)},");
-            sb.Append($"\"distinct_id\":{EscapeString(evt.DistinctId)},");
-            sb.Append($"\"timestamp\":{EscapeString(evt.Timestamp)},");
-            sb.Append("\"properties\":");
-            SerializeValue(evt.Properties, sb);
-            sb.Append("}");
+            SerializeEventToBuilder(evt, sb);
             return sb.ToString();
         }
 
         public static string SerializeBatch(BatchPayload payload)
         {
             var sb = new StringBuilder();
-            sb.Append("{");
-            sb.Append($"\"api_key\":{EscapeString(payload.ApiKey)},");
-            sb.Append($"\"sent_at\":{EscapeString(payload.SentAt)},");
-            sb.Append("\"batch\":[");
+            sb.Append("{\"api_key\":");
+            AppendEscapedString(payload.ApiKey, sb);
+            sb.Append(",\"sent_at\":");
+            AppendEscapedString(payload.SentAt, sb);
+            sb.Append(",\"batch\":[");
 
             for (int i = 0; i < payload.Batch.Count; i++)
             {
                 if (i > 0)
-                    sb.Append(",");
-                sb.Append(SerializeEvent(payload.Batch[i]));
+                {
+                    sb.Append(',');
+                }
+                SerializeEventToBuilder(payload.Batch[i], sb);
             }
 
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        static void SerializeEventToBuilder(PostHogEvent evt, StringBuilder sb)
+        {
+            sb.Append("{\"uuid\":");
+            AppendEscapedString(evt.Uuid, sb);
+            sb.Append(",\"event\":");
+            AppendEscapedString(evt.Event, sb);
+            sb.Append(",\"distinct_id\":");
+            AppendEscapedString(evt.DistinctId, sb);
+            sb.Append(",\"timestamp\":");
+            AppendEscapedString(evt.Timestamp, sb);
+            sb.Append(",\"properties\":");
+            SerializeValue(evt.Properties, sb);
+            sb.Append('}');
         }
 
         static void SerializeValue(object value, StringBuilder sb)
@@ -63,7 +74,7 @@ namespace PostHog
             switch (value)
             {
                 case string s:
-                    sb.Append(EscapeString(s));
+                    AppendEscapedString(s, sb);
                     break;
                 case bool b:
                     sb.Append(b ? "true" : "false");
@@ -84,10 +95,10 @@ namespace PostHog
                     sb.Append(dec.ToString(CultureInfo.InvariantCulture));
                     break;
                 case DateTime dt:
-                    sb.Append(EscapeString(dt.ToString("o")));
+                    AppendEscapedString(dt.ToString("o"), sb);
                     break;
                 case DateTimeOffset dto:
-                    sb.Append(EscapeString(dto.ToString("o")));
+                    AppendEscapedString(dto.ToString("o"), sb);
                     break;
                 case IDictionary<string, object> dict:
                     SerializeDictionary(dict, sb);
@@ -100,41 +111,45 @@ namespace PostHog
                     break;
                 default:
                     // For other types, try to convert to string
-                    sb.Append(EscapeString(value.ToString()));
+                    AppendEscapedString(value.ToString(), sb);
                     break;
             }
         }
 
         static void SerializeDictionary(IDictionary<string, object> dict, StringBuilder sb)
         {
-            sb.Append("{");
+            sb.Append('{');
             bool first = true;
             foreach (var kvp in dict)
             {
                 if (!first)
-                    sb.Append(",");
+                {
+                    sb.Append(',');
+                }
                 first = false;
-                sb.Append(EscapeString(kvp.Key));
-                sb.Append(":");
+                AppendEscapedString(kvp.Key, sb);
+                sb.Append(':');
                 SerializeValue(kvp.Value, sb);
             }
-            sb.Append("}");
+            sb.Append('}');
         }
 
         static void SerializeGenericDictionary(IDictionary dict, StringBuilder sb)
         {
-            sb.Append("{");
+            sb.Append('{');
             bool first = true;
             foreach (DictionaryEntry entry in dict)
             {
                 if (!first)
-                    sb.Append(",");
+                {
+                    sb.Append(',');
+                }
                 first = false;
-                sb.Append(EscapeString(entry.Key?.ToString() ?? ""));
-                sb.Append(":");
+                AppendEscapedString(entry.Key?.ToString() ?? "", sb);
+                sb.Append(':');
                 SerializeValue(entry.Value, sb);
             }
-            sb.Append("}");
+            sb.Append('}');
         }
 
         static void SerializeList(IList list, StringBuilder sb)
@@ -149,13 +164,37 @@ namespace PostHog
             sb.Append("]");
         }
 
-        static string EscapeString(string s)
+        /// <summary>
+        /// Checks if the string at the given position matches the expected value without allocation.
+        /// </summary>
+        static bool MatchesAt(string json, int pos, string expected)
+        {
+            if (pos + expected.Length > json.Length)
+            {
+                return false;
+            }
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (json[pos + i] != expected[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Appends a JSON-escaped string directly to the StringBuilder, avoiding intermediate allocations.
+        /// </summary>
+        static void AppendEscapedString(string s, StringBuilder sb)
         {
             if (s == null)
-                return "null";
+            {
+                sb.Append("null");
+                return;
+            }
 
-            var sb = new StringBuilder();
-            sb.Append("\"");
+            sb.Append('"');
             foreach (char c in s)
             {
                 switch (c)
@@ -184,7 +223,8 @@ namespace PostHog
                     default:
                         if (c < 32)
                         {
-                            sb.Append($"\\u{(int)c:x4}");
+                            sb.Append("\\u");
+                            sb.Append(((int)c).ToString("x4"));
                         }
                         else
                         {
@@ -193,8 +233,7 @@ namespace PostHog
                         break;
                 }
             }
-            sb.Append("\"");
-            return sb.ToString();
+            sb.Append('"');
         }
 
         /// <summary>
@@ -333,18 +372,18 @@ namespace PostHog
                 return ParseArray(json, ref pos);
             }
 
-            // Boolean or null
-            if (json.Substring(pos).StartsWith("true"))
+            // Boolean or null - avoid Substring allocation by checking characters directly
+            if (c == 't' && MatchesAt(json, pos, "true"))
             {
                 pos += 4;
                 return true;
             }
-            if (json.Substring(pos).StartsWith("false"))
+            if (c == 'f' && MatchesAt(json, pos, "false"))
             {
                 pos += 5;
                 return false;
             }
-            if (json.Substring(pos).StartsWith("null"))
+            if (c == 'n' && MatchesAt(json, pos, "null"))
             {
                 pos += 4;
                 return null;
