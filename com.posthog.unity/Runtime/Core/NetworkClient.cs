@@ -144,7 +144,7 @@ namespace PostHog
         string GetFlagsUrl()
         {
             var host = _config.Host.TrimEnd('/');
-            return $"{host}/flags/?v=2&config=true";
+            return $"{host}/flags/?v={FeatureFlagsResponse.CurrentVersion}&config=true";
         }
     }
 }
