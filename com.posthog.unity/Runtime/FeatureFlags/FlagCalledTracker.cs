@@ -50,7 +50,7 @@ namespace PostHog
         /// </summary>
         static string CreateKey(string distinctId, string flagKey, object value)
         {
-            // Special-case common types to avoid ToString() allocations
+            // Avoid boxing and reduce allocations for common types
             string valueStr = value switch
             {
                 null => "null",
