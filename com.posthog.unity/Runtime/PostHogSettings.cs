@@ -26,7 +26,7 @@ namespace PostHog
         [Header("Initialization")]
         [Tooltip(
             "Automatically initialize PostHog when the application starts. "
-                + "Requires this asset to be in a Resources folder named 'PostHogSettings'."
+                + "Requires this asset to be at 'Resources/PostHogSettings.asset'."
         )]
         [SerializeField]
         bool _autoInitialize = true;

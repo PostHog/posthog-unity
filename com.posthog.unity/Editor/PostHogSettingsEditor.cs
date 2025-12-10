@@ -386,7 +386,19 @@ namespace PostHog.Editor
         bool IsInResourcesFolder()
         {
             var path = AssetDatabase.GetAssetPath(target);
-            return path.Contains("/Resources/") && path.EndsWith("PostHogSettings.asset");
+            // Check for exact "/Resources/" directory segment to avoid false positives
+            // like "Assets/MyResources/PostHogSettings.asset"
+            var segments = path.Split('/');
+            bool hasResourcesFolder = false;
+            for (int i = 0; i < segments.Length - 1; i++)
+            {
+                if (segments[i] == "Resources")
+                {
+                    hasResourcesFolder = true;
+                    break;
+                }
+            }
+            return hasResourcesFolder && path.EndsWith("/PostHogSettings.asset");
         }
 
         /// <summary>

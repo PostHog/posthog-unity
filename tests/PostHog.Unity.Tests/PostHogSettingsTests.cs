@@ -3,14 +3,17 @@ using System.Runtime.CompilerServices;
 
 namespace PostHog.Unity.Tests;
 
-public class PostHogSettingsTests
+/// <summary>
+/// Shared test helpers for PostHogSettings tests.
+/// </summary>
+internal static class PostHogSettingsTestHelper
 {
     /// <summary>
     /// Creates an uninitialized PostHogSettings instance for testing.
     /// We use RuntimeHelpers.GetUninitializedObject to bypass ScriptableObject.CreateInstance
     /// which requires Unity runtime. Field defaults are applied manually.
     /// </summary>
-    static PostHogSettings CreateSettings()
+    public static PostHogSettings CreateSettings()
     {
         // Create instance without calling constructor (bypasses Unity runtime requirement)
         var settings = (PostHogSettings)
@@ -40,20 +43,23 @@ public class PostHogSettingsTests
     /// <summary>
     /// Helper to set private serialized fields via reflection.
     /// </summary>
-    static void SetField(object obj, string fieldName, object value)
+    public static void SetField(object obj, string fieldName, object value)
     {
         var field = obj.GetType()
             .GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         field.SetValue(obj, value);
     }
+}
 
+public class PostHogSettingsTests
+{
     public class TheDefaultValues
     {
         [Fact]
         public void MatchPostHogConfigDefaults()
         {
-            var settings = CreateSettings();
+            var settings = PostHogSettingsTestHelper.CreateSettings();
 
             // Verify all defaults match PostHogConfig defaults
             Assert.Null(settings.ApiKey);
@@ -81,26 +87,26 @@ public class PostHogSettingsTests
         [Fact]
         public void MapsAllPropertiesToPostHogConfig()
         {
-            var settings = CreateSettings();
+            var settings = PostHogSettingsTestHelper.CreateSettings();
 
             // Set all values via reflection
-            SetField(settings, "_apiKey", "phc_test_key");
-            SetField(settings, "_host", "https://custom.posthog.com");
-            SetField(settings, "_autoInitialize", false);
-            SetField(settings, "_flushAt", 15);
-            SetField(settings, "_flushIntervalSeconds", 60);
-            SetField(settings, "_maxQueueSize", 500);
-            SetField(settings, "_maxBatchSize", 100);
-            SetField(settings, "_captureApplicationLifecycleEvents", false);
-            SetField(settings, "_personProfiles", PersonProfiles.Never);
-            SetField(settings, "_logLevel", PostHogLogLevel.Debug);
-            SetField(settings, "_reuseAnonymousId", true);
-            SetField(settings, "_preloadFeatureFlags", false);
-            SetField(settings, "_sendFeatureFlagEvent", false);
-            SetField(settings, "_sendDefaultPersonPropertiesForFlags", false);
-            SetField(settings, "_captureExceptions", false);
-            SetField(settings, "_exceptionDebounceIntervalMs", 2000);
-            SetField(settings, "_captureExceptionsInEditor", false);
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", "phc_test_key");
+            PostHogSettingsTestHelper.SetField(settings, "_host", "https://custom.posthog.com");
+            PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", false);
+            PostHogSettingsTestHelper.SetField(settings, "_flushAt", 15);
+            PostHogSettingsTestHelper.SetField(settings, "_flushIntervalSeconds", 60);
+            PostHogSettingsTestHelper.SetField(settings, "_maxQueueSize", 500);
+            PostHogSettingsTestHelper.SetField(settings, "_maxBatchSize", 100);
+            PostHogSettingsTestHelper.SetField(settings, "_captureApplicationLifecycleEvents", false);
+            PostHogSettingsTestHelper.SetField(settings, "_personProfiles", PersonProfiles.Never);
+            PostHogSettingsTestHelper.SetField(settings, "_logLevel", PostHogLogLevel.Debug);
+            PostHogSettingsTestHelper.SetField(settings, "_reuseAnonymousId", true);
+            PostHogSettingsTestHelper.SetField(settings, "_preloadFeatureFlags", false);
+            PostHogSettingsTestHelper.SetField(settings, "_sendFeatureFlagEvent", false);
+            PostHogSettingsTestHelper.SetField(settings, "_sendDefaultPersonPropertiesForFlags", false);
+            PostHogSettingsTestHelper.SetField(settings, "_captureExceptions", false);
+            PostHogSettingsTestHelper.SetField(settings, "_exceptionDebounceIntervalMs", 2000);
+            PostHogSettingsTestHelper.SetField(settings, "_captureExceptionsInEditor", false);
 
             var config = settings.ToConfig();
 
@@ -125,8 +131,8 @@ public class PostHogSettingsTests
         [Fact]
         public void WithDefaultValues_CreatesValidConfig()
         {
-            var settings = CreateSettings();
-            SetField(settings, "_apiKey", "phc_test_key");
+            var settings = PostHogSettingsTestHelper.CreateSettings();
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", "phc_test_key");
 
             var config = settings.ToConfig();
 
@@ -140,7 +146,7 @@ public class PostHogSettingsTests
         [Fact]
         public void WithNullApiKey_CreatesConfigWithNullApiKey()
         {
-            var settings = CreateSettings();
+            var settings = PostHogSettingsTestHelper.CreateSettings();
 
             var config = settings.ToConfig();
 
@@ -154,26 +160,26 @@ public class PostHogSettingsTests
         [Fact]
         public void ExposeAllSerializedFields()
         {
-            var settings = CreateSettings();
+            var settings = PostHogSettingsTestHelper.CreateSettings();
 
             // Set values via reflection and verify public properties return them
-            SetField(settings, "_apiKey", "test_key");
-            SetField(settings, "_host", "https://test.com");
-            SetField(settings, "_autoInitialize", false);
-            SetField(settings, "_flushAt", 42);
-            SetField(settings, "_flushIntervalSeconds", 99);
-            SetField(settings, "_maxQueueSize", 123);
-            SetField(settings, "_maxBatchSize", 77);
-            SetField(settings, "_captureApplicationLifecycleEvents", false);
-            SetField(settings, "_personProfiles", PersonProfiles.Always);
-            SetField(settings, "_logLevel", PostHogLogLevel.Error);
-            SetField(settings, "_reuseAnonymousId", true);
-            SetField(settings, "_preloadFeatureFlags", false);
-            SetField(settings, "_sendFeatureFlagEvent", false);
-            SetField(settings, "_sendDefaultPersonPropertiesForFlags", false);
-            SetField(settings, "_captureExceptions", false);
-            SetField(settings, "_exceptionDebounceIntervalMs", 5000);
-            SetField(settings, "_captureExceptionsInEditor", false);
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", "test_key");
+            PostHogSettingsTestHelper.SetField(settings, "_host", "https://test.com");
+            PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", false);
+            PostHogSettingsTestHelper.SetField(settings, "_flushAt", 42);
+            PostHogSettingsTestHelper.SetField(settings, "_flushIntervalSeconds", 99);
+            PostHogSettingsTestHelper.SetField(settings, "_maxQueueSize", 123);
+            PostHogSettingsTestHelper.SetField(settings, "_maxBatchSize", 77);
+            PostHogSettingsTestHelper.SetField(settings, "_captureApplicationLifecycleEvents", false);
+            PostHogSettingsTestHelper.SetField(settings, "_personProfiles", PersonProfiles.Always);
+            PostHogSettingsTestHelper.SetField(settings, "_logLevel", PostHogLogLevel.Error);
+            PostHogSettingsTestHelper.SetField(settings, "_reuseAnonymousId", true);
+            PostHogSettingsTestHelper.SetField(settings, "_preloadFeatureFlags", false);
+            PostHogSettingsTestHelper.SetField(settings, "_sendFeatureFlagEvent", false);
+            PostHogSettingsTestHelper.SetField(settings, "_sendDefaultPersonPropertiesForFlags", false);
+            PostHogSettingsTestHelper.SetField(settings, "_captureExceptions", false);
+            PostHogSettingsTestHelper.SetField(settings, "_exceptionDebounceIntervalMs", 5000);
+            PostHogSettingsTestHelper.SetField(settings, "_captureExceptionsInEditor", false);
 
             Assert.Equal("test_key", settings.ApiKey);
             Assert.Equal("https://test.com", settings.Host);
@@ -198,46 +204,6 @@ public class PostHogSettingsTests
 
 public class PostHogAutoInitializerTests
 {
-    /// <summary>
-    /// Creates an uninitialized PostHogSettings instance for testing.
-    /// </summary>
-    static PostHogSettings CreateSettings()
-    {
-        var settings = (PostHogSettings)
-            RuntimeHelpers.GetUninitializedObject(typeof(PostHogSettings));
-
-        // Set defaults
-        SetField(settings, "_host", "https://us.i.posthog.com");
-        SetField(settings, "_autoInitialize", true);
-        SetField(settings, "_flushAt", 20);
-        SetField(settings, "_flushIntervalSeconds", 30);
-        SetField(settings, "_maxQueueSize", 1000);
-        SetField(settings, "_maxBatchSize", 50);
-        SetField(settings, "_captureApplicationLifecycleEvents", true);
-        SetField(settings, "_personProfiles", PersonProfiles.IdentifiedOnly);
-        SetField(settings, "_logLevel", PostHogLogLevel.Warning);
-        SetField(settings, "_reuseAnonymousId", false);
-        SetField(settings, "_preloadFeatureFlags", true);
-        SetField(settings, "_sendFeatureFlagEvent", true);
-        SetField(settings, "_sendDefaultPersonPropertiesForFlags", true);
-        SetField(settings, "_captureExceptions", true);
-        SetField(settings, "_exceptionDebounceIntervalMs", 1000);
-        SetField(settings, "_captureExceptionsInEditor", true);
-
-        return settings;
-    }
-
-    /// <summary>
-    /// Helper to set private serialized fields via reflection.
-    /// </summary>
-    static void SetField(object obj, string fieldName, object value)
-    {
-        var field = obj.GetType()
-            .GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(field);
-        field.SetValue(obj, value);
-    }
-
     public class TheTryInitializeMethod
     {
         [Fact]
@@ -251,9 +217,9 @@ public class PostHogAutoInitializerTests
         [Fact]
         public void WithAutoInitializeDisabled_ReturnsAutoInitializeDisabled()
         {
-            var settings = CreateSettings();
-            SetField(settings, "_autoInitialize", false);
-            SetField(settings, "_apiKey", "phc_test_key");
+            var settings = PostHogSettingsTestHelper.CreateSettings();
+            PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", false);
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", "phc_test_key");
 
             var result = PostHogAutoInitializer.TryInitialize(settings);
 
@@ -266,9 +232,9 @@ public class PostHogAutoInitializerTests
         [Fact]
         public void WithNullApiKey_ReturnsApiKeyMissing()
         {
-            var settings = CreateSettings();
-            SetField(settings, "_autoInitialize", true);
-            SetField(settings, "_apiKey", null);
+            var settings = PostHogSettingsTestHelper.CreateSettings();
+            PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", true);
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", null);
 
             // Disable logging to avoid Unity runtime dependencies
             PostHogLogger.SetLogLevel(PostHogLogLevel.None);
@@ -280,9 +246,9 @@ public class PostHogAutoInitializerTests
         [Fact]
         public void WithEmptyApiKey_ReturnsApiKeyMissing()
         {
-            var settings = CreateSettings();
-            SetField(settings, "_autoInitialize", true);
-            SetField(settings, "_apiKey", "");
+            var settings = PostHogSettingsTestHelper.CreateSettings();
+            PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", true);
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", "");
 
             // Disable logging to avoid Unity runtime dependencies
             PostHogLogger.SetLogLevel(PostHogLogLevel.None);
@@ -294,9 +260,9 @@ public class PostHogAutoInitializerTests
         [Fact]
         public void WithWhitespaceApiKey_ReturnsApiKeyMissing()
         {
-            var settings = CreateSettings();
-            SetField(settings, "_autoInitialize", true);
-            SetField(settings, "_apiKey", "   ");
+            var settings = PostHogSettingsTestHelper.CreateSettings();
+            PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", true);
+            PostHogSettingsTestHelper.SetField(settings, "_apiKey", "   ");
 
             // Disable logging to avoid Unity runtime dependencies
             PostHogLogger.SetLogLevel(PostHogLogLevel.None);
