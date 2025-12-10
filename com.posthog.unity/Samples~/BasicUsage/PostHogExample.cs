@@ -108,8 +108,81 @@ public class PostHogExample : MonoBehaviour
         PostHog.PostHog.Register("game_version", version);
     }
 
+    #region Feature Flags
+
+    /// <summary>
+    /// Example of checking if a feature flag is enabled.
+    /// </summary>
+    public void CheckFeatureFlag()
+    {
+        // Simple boolean check
+        if (PostHog.PostHog.IsFeatureEnabled("new-checkout-flow"))
+        {
+            Debug.Log("New checkout flow is enabled!");
+        }
+
+        // Get a multivariate flag value
+        string variant = PostHog.PostHog.GetFeatureFlag<string>("experiment-variant", "control");
+        Debug.Log($"Experiment variant: {variant}");
+
+        // Get a flag payload (attached JSON data)
+        var config = PostHog.PostHog.GetFeatureFlagPayload("checkout-config");
+        if (config != null)
+        {
+            Debug.Log($"Checkout config: {config}");
+        }
+    }
+
+    /// <summary>
+    /// Example of setting properties for feature flag evaluation.
+    /// </summary>
+    public void SetFlagProperties()
+    {
+        // Set person properties for flag targeting
+        PostHog.PostHog.SetPersonPropertiesForFlags(
+            new Dictionary<string, object> { { "plan", "premium" }, { "beta_user", true } }
+        );
+
+        // Set group properties for flag targeting
+        PostHog.PostHog.SetGroupPropertiesForFlags(
+            "company",
+            new Dictionary<string, object> { { "size", "enterprise" }, { "industry", "gaming" } }
+        );
+    }
+
+    /// <summary>
+    /// Example of manually reloading feature flags.
+    /// </summary>
+    public void RefreshFeatureFlags()
+    {
+        PostHog.PostHog.ReloadFeatureFlags(() =>
+        {
+            Debug.Log("Feature flags reloaded!");
+            CheckFeatureFlag();
+        });
+    }
+
+    /// <summary>
+    /// Example of subscribing to feature flag load events.
+    /// </summary>
+    void SubscribeToFlagEvents()
+    {
+        PostHog.PostHog.OnFeatureFlagsLoaded += OnFlagsLoaded;
+    }
+
+    void OnFlagsLoaded()
+    {
+        Debug.Log("Feature flags have been loaded!");
+        // Update UI based on new flag values
+    }
+
+    #endregion
+
     void OnDestroy()
     {
+        // Unsubscribe from events
+        PostHog.PostHog.OnFeatureFlagsLoaded -= OnFlagsLoaded;
+
         // Flush any remaining events
         PostHog.PostHog.Flush();
     }
