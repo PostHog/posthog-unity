@@ -87,14 +87,14 @@ PostHog.Screen("Main Menu");
 
 ```csharp
 // Identify a logged-in user
-PostHog.Identify("user_123", new Dictionary<string, object>
+await PostHog.IdentifyAsync("user_123", new Dictionary<string, object>
 {
     { "email", "user@example.com" },
     { "plan", "premium" }
 });
 
 // Reset on logout (returns to anonymous)
-PostHog.Reset();
+await PostHog.ResetAsync();
 ```
 
 ## Groups
@@ -137,7 +137,7 @@ if (PostHog.IsFeatureEnabled("new-checkout-flow"))
 string variant = PostHog.GetFeatureFlag<string>("experiment-variant", "control");
 
 // Manually reload flags
-PostHog.ReloadFeatureFlags(() => Debug.Log("Flags reloaded!"));
+await PostHog.ReloadFeatureFlagsAsync();
 
 // Listen for flag updates
 PostHog.OnFeatureFlagsLoaded += () => UpdateUI();

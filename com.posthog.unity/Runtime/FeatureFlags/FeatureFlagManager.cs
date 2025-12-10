@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace PostHog
@@ -74,8 +75,22 @@ namespace PostHog
         /// Reloads feature flags from the server.
         /// </summary>
         /// <param name="monoBehaviour">MonoBehaviour to run coroutine on</param>
+        /// <returns>A task that completes when flags are loaded</returns>
+        public Task ReloadFeatureFlagsAsync(MonoBehaviour monoBehaviour)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            ReloadFeatureFlags(monoBehaviour, () => tcs.SetResult(true));
+            return tcs.Task;
+        }
+
+        /// <summary>
+        /// Reloads feature flags from the server.
+        /// Used internally for fire-and-forget scenarios (e.g., initialization).
+        /// For awaitable version, use ReloadFeatureFlagsAsync.
+        /// </summary>
+        /// <param name="monoBehaviour">MonoBehaviour to run coroutine on</param>
         /// <param name="onComplete">Optional callback when complete</param>
-        public void ReloadFeatureFlags(MonoBehaviour monoBehaviour, Action onComplete = null)
+        internal void ReloadFeatureFlags(MonoBehaviour monoBehaviour, Action onComplete = null)
         {
             lock (_loadingLock)
             {

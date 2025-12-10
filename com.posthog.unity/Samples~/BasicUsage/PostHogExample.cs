@@ -191,13 +191,11 @@ public class PostHogExample : MonoBehaviour
     /// <summary>
     /// Example of manually reloading feature flags.
     /// </summary>
-    public void RefreshFeatureFlags()
+    public async void RefreshFeatureFlags()
     {
-        PostHog.PostHog.ReloadFeatureFlags(() =>
-        {
-            Debug.Log("Feature flags reloaded!");
-            CheckFeatureFlag();
-        });
+        await PostHog.PostHog.ReloadFeatureFlagsAsync();
+        Debug.Log("Feature flags reloaded!");
+        CheckFeatureFlag();
     }
 
     /// <summary>
