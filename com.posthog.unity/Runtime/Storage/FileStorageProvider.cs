@@ -19,7 +19,7 @@ namespace PostHog
         string _queuePath;
         string _statePath;
         readonly object _lock = new object();
-        List<string> _eventIndex;
+        List<string> _eventIds;
 
         // Track pending writes so we can wait for them on shutdown
         readonly ConcurrentDictionary<string, Task> _pendingWrites =
@@ -40,14 +40,14 @@ namespace PostHog
                 PostHogLogger.Error("Failed to create storage directories", ex);
             }
 
-            LoadEventIndex();
+            LoadEventIds();
         }
 
-        void LoadEventIndex()
+        void LoadEventIds()
         {
             lock (_lock)
             {
-                _eventIndex = new List<string>();
+                _eventIds = new List<string>();
 
                 try
                 {
@@ -59,8 +59,8 @@ namespace PostHog
                             .OrderBy(f => f) // UUID v7 is time-sortable
                             .ToList();
 
-                        _eventIndex = files;
-                        PostHogLogger.Debug($"Loaded {_eventIndex.Count} events from disk");
+                        _eventIds = files;
+                        PostHogLogger.Debug($"Loaded {_eventIds.Count} events from disk");
                     }
                 }
                 catch (Exception ex)
@@ -75,9 +75,9 @@ namespace PostHog
             // Add to index immediately so the event is counted
             lock (_lock)
             {
-                if (!_eventIndex.Contains(id))
+                if (!_eventIds.Contains(id))
                 {
-                    _eventIndex.Add(id);
+                    _eventIds.Add(id);
                 }
             }
 
@@ -96,7 +96,7 @@ namespace PostHog
                     // Remove from index if write failed
                     lock (_lock)
                     {
-                        _eventIndex.Remove(id);
+                        _eventIds.Remove(id);
                     }
                 }
                 finally
@@ -137,7 +137,7 @@ namespace PostHog
                 {
                     PostHogLogger.Error($"Failed to load event {id}", ex);
                     // Remove corrupted event from index
-                    _eventIndex.Remove(id);
+                    _eventIds.Remove(id);
                     TryDeleteFile(GetEventFilePath(id));
                 }
 
@@ -166,7 +166,7 @@ namespace PostHog
                 {
                     var filePath = GetEventFilePath(id);
                     TryDeleteFile(filePath);
-                    _eventIndex.Remove(id);
+                    _eventIds.Remove(id);
                     PostHogLogger.Debug($"Deleted event {id}");
                 }
                 catch (Exception ex)
@@ -180,8 +180,7 @@ namespace PostHog
         {
             lock (_lock)
             {
-                // Return a defensive copy as IReadOnlyList to prevent modification
-                return new List<string>(_eventIndex);
+                return _eventIds.AsReadOnly();
             }
         }
 
@@ -189,7 +188,7 @@ namespace PostHog
         {
             lock (_lock)
             {
-                return _eventIndex.Count;
+                return _eventIds.Count;
             }
         }
 
@@ -202,11 +201,11 @@ namespace PostHog
             {
                 try
                 {
-                    foreach (var id in _eventIndex.ToList())
+                    foreach (var id in _eventIds.ToList())
                     {
                         TryDeleteFile(GetEventFilePath(id));
                     }
-                    _eventIndex.Clear();
+                    _eventIds.Clear();
                     PostHogLogger.Debug("Cleared all events");
                 }
                 catch (Exception ex)
