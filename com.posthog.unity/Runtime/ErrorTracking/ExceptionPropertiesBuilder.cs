@@ -12,7 +12,6 @@ namespace PostHog.ErrorTracking
         private const int MaxExceptionDepth = 4;
         private const int MaxExceptions = 50;
         private const int MaxStackFrames = 50;
-        private const string SdkVersion = "1.0.0"; // TODO: Read from package.json
 
         /// <summary>
         /// Builds exception properties from an Exception object.
@@ -29,8 +28,8 @@ namespace PostHog.ErrorTracking
             properties["$exception_level"] = "error";
             properties["$exception_source"] = "unity_sdk";
             properties["$exception_handled"] = handled;
-            properties["$lib"] = "posthog-unity";
-            properties["$lib_version"] = SdkVersion;
+            properties["$lib"] = SdkInfo.LibraryName;
+            properties["$lib_version"] = SdkInfo.Version;
             properties["$os"] = GetOperatingSystem();
             properties["$os_version"] = SystemInfo.operatingSystem;
             properties["$device_model"] = SystemInfo.deviceModel;
@@ -59,8 +58,8 @@ namespace PostHog.ErrorTracking
             properties["$exception_level"] = "error";
             properties["$exception_source"] = "unity_sdk";
             properties["$exception_handled"] = handled;
-            properties["$lib"] = "posthog-unity";
-            properties["$lib_version"] = SdkVersion;
+            properties["$lib"] = SdkInfo.LibraryName;
+            properties["$lib_version"] = SdkInfo.Version;
             properties["$os"] = GetOperatingSystem();
             properties["$os_version"] = SystemInfo.operatingSystem;
             properties["$device_model"] = SystemInfo.deviceModel;

@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  # Auto-trigger when release PRs are merged
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+  # Manual trigger for exceptional cases
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0) - must match package.json'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run (skip tag and release creation)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PACKAGE_PATH: com.posthog.unity/package.json
+
+permissions:
+  # Required for creating git tags (git push origin) and GitHub releases (gh release create)
+  contents: write
+
+jobs:
+  release:
+    # Run if: manual trigger OR (PR merged AND from release branch)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine and validate version
+        id: version
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # Extract version from branch name (release/v0.1.0 -> 0.1.0)
+            BRANCH="${{ github.event.pull_request.head.ref }}"
+
+            # Validate branch name format BEFORE extraction to prevent command injection
+            if [[ ! "$BRANCH" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+              echo "::error::Invalid branch name format: $BRANCH"
+              echo "Expected format: release/vX.Y.Z or release/vX.Y.Z-suffix"
+              exit 1
+            fi
+
+            VERSION="${BRANCH#release/v}"
+          fi
+
+          # Validate version format (defense in depth)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "::error::Invalid version format: $VERSION"
+            echo "Version must be in semver format (e.g., 0.1.0 or 1.0.0-preview.1)"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
+
+      - name: Check version matches package.json
+        run: |
+          set -euo pipefail
+
+          PACKAGE_VERSION=$(jq -r '.version' "${{ env.PACKAGE_PATH }}")
+          INPUT_VERSION="${{ steps.version.outputs.version }}"
+
+          if [[ "$PACKAGE_VERSION" != "$INPUT_VERSION" ]]; then
+            echo "::error::Version mismatch!"
+            echo "package.json version: $PACKAGE_VERSION"
+            echo "Expected version: $INPUT_VERSION"
+            exit 1
+          fi
+
+          echo "✓ Version $INPUT_VERSION matches package.json"
+
+      - name: Check tag doesn't already exist
+        run: |
+          set -euo pipefail
+
+          TAG="v${{ steps.version.outputs.version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists!"
+            exit 1
+          fi
+          echo "✓ Tag $TAG is available"
+
+      - name: Create tag and release
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="v${{ steps.version.outputs.version }}"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          # Create and push tag
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          # Create GitHub release with auto-generated notes
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              --notes-start-tag "$PREVIOUS_TAG"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+          echo "✓ Created release $TAG"
+
+      - name: Dry run summary
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="v${{ steps.version.outputs.version }}"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          echo "::notice::Dry run completed successfully!"
+          echo ""
+          echo "Would create:"
+          echo "  - Tag: $TAG"
+          echo "  - GitHub Release with auto-generated notes"
+          echo ""
+          echo "Preview of release notes:"
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            gh api repos/${{ github.repository }}/releases/generate-notes \
+              -f tag_name="$TAG" \
+              -f target_commitish="${{ github.sha }}" \
+              -f previous_tag_name="$PREVIOUS_TAG" \
+              --jq '.body' || echo "(Could not generate preview)"
+          else
+            gh api repos/${{ github.repository }}/releases/generate-notes \
+              -f tag_name="$TAG" \
+              -f target_commitish="${{ github.sha }}" \
+              --jq '.body' || echo "(Could not generate preview - first release)"
+          fi

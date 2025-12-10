@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+#/ Usage: bin/release [patch|minor|major]
+#/ Description: Creates a release PR that bumps the version. When merged, a
+#/              GitHub Release is automatically created.
+#/
+#/ Options:
+#/   patch  - Bump patch version (0.1.0 -> 0.1.1) [default]
+#/   minor  - Bump minor version (0.1.0 -> 0.2.0)
+#/   major  - Bump major version (0.1.0 -> 1.0.0)
+#/
+#/ If no argument is provided, prompts interactively.
+set -euo pipefail
+source bin/helpers/_utils.sh
+set_source_and_root_dir
+
+PACKAGE_JSON="com.posthog.unity/package.json"
+VERSION_FILE="com.posthog.unity/Runtime/Utilities/SdkInfo.Generated.cs"
+REPO="PostHog/posthog-unity"
+
+# Check dependencies
+if ! command -v jq &> /dev/null; then
+    fatal "jq is required but not installed. Run: bin/bootstrap"
+fi
+
+if ! command -v gh &> /dev/null; then
+    fatal "GitHub CLI (gh) is required but not installed. Run: bin/bootstrap"
+fi
+
+# Check gh auth
+if ! gh auth status &> /dev/null; then
+    fatal "Not authenticated with GitHub CLI. Run: gh auth login"
+fi
+
+# Get current version
+current_version=$(jq -r '.version' "$PACKAGE_JSON")
+if [[ -z "$current_version" || "$current_version" == "null" ]]; then
+    fatal "Could not read version from $PACKAGE_JSON"
+fi
+
+echo "Current version: $current_version"
+
+# Parse version components
+IFS='.' read -r major minor patch <<< "$current_version"
+
+# Determine bump type
+bump_type="${1:-}"
+
+if [[ -z "$bump_type" ]]; then
+    echo ""
+    echo "What type of release is this?"
+    echo "  [1] Patch (bug fixes) - $major.$minor.$((patch + 1))"
+    echo "  [2] Minor (new features) - $major.$((minor + 1)).0"
+    echo "  [3] Major (breaking changes) - $((major + 1)).0.0"
+    echo ""
+    read -r -p "Select [1]: " choice
+    choice="${choice:-1}"
+
+    case "$choice" in
+        1|patch|p) bump_type="patch" ;;
+        2|minor|m) bump_type="minor" ;;
+        3|major|M) bump_type="major" ;;
+        *)
+            fatal "Invalid choice: $choice"
+            ;;
+    esac
+fi
+
+# Calculate new version
+case "$bump_type" in
+    patch|p)
+        new_version="$major.$minor.$((patch + 1))"
+        ;;
+    minor|m)
+        new_version="$major.$((minor + 1)).0"
+        ;;
+    major|M)
+        new_version="$((major + 1)).0.0"
+        ;;
+    *)
+        fatal "Invalid bump type: $bump_type. Use patch, minor, or major."
+        ;;
+esac
+
+echo ""
+echo "New version: $new_version"
+
+# Check for uncommitted changes
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo ""
+    echo "Warning: You have uncommitted changes."
+    git status --short
+    echo ""
+    read -r -p "Continue anyway? [y/N]: " continue_anyway
+    if [[ ! "$continue_anyway" =~ ^[Yy]$ ]]; then
+        fatal "Aborted. Please commit or stash your changes first."
+    fi
+fi
+
+# Check if tag already exists
+if git rev-parse "v$new_version" &> /dev/null; then
+    fatal "Tag v$new_version already exists!"
+fi
+
+# Check if release branch already exists
+release_branch="release/v$new_version"
+if git rev-parse --verify "$release_branch" &> /dev/null; then
+    fatal "Branch $release_branch already exists locally!"
+fi
+if git ls-remote --exit-code --heads origin "$release_branch" &> /dev/null; then
+    fatal "Branch $release_branch already exists on origin!"
+fi
+
+# Confirm release
+echo ""
+echo "This will:"
+echo "  1. Create branch '$release_branch' from main"
+echo "  2. Update version to $new_version"
+echo "  3. Push and create a PR to main"
+echo "  4. When merged, automatically create tag v$new_version and GitHub Release"
+echo ""
+read -r -p "Proceed? [y/N]: " confirm
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    fatal "Aborted."
+fi
+
+# Ensure we have latest main
+echo ""
+echo "Fetching latest from origin..."
+git fetch origin main
+
+# Create release branch from main
+echo "Creating branch $release_branch..."
+git checkout -b "$release_branch" origin/main
+
+# Update package.json
+echo "Updating $PACKAGE_JSON..."
+jq --arg version "$new_version" '.version = $version' "$PACKAGE_JSON" > "$PACKAGE_JSON.tmp"
+mv "$PACKAGE_JSON.tmp" "$PACKAGE_JSON"
+
+# Generate version file
+echo "Generating SdkInfo.Generated.cs..."
+bin/generate-version
+
+# Commit
+echo "Committing..."
+git add "$PACKAGE_JSON" "$VERSION_FILE"
+git commit -m "Bump version to $new_version"
+
+# Push and create PR
+echo "Pushing branch and creating PR..."
+git push -u origin "$release_branch"
+
+pr_url=$(gh pr create \
+    --repo "$REPO" \
+    --base main \
+    --head "$release_branch" \
+    --title "Release v$new_version" \
+    --body "$(cat <<EOF
+## Release v$new_version
+
+This PR bumps the version to $new_version.
+
+When merged, a GitHub Release will be automatically created with tag \`v$new_version\`.
+
+### Checklist
+
+- [ ] Version bump is correct ($current_version → $new_version)
+- [ ] All CI checks pass
+- [ ] Ready to release
+EOF
+)")
+
+echo ""
+echo "Release PR created!"
+echo ""
+echo "  $pr_url"
+echo ""
+echo "Once the PR is merged, the release workflow will automatically:"
+echo "  1. Create tag v$new_version"
+echo "  2. Create a GitHub Release with auto-generated notes"
+echo ""
+echo "To cancel this release, close the PR and delete the branch:"
+echo "  gh pr close $release_branch --delete-branch"
