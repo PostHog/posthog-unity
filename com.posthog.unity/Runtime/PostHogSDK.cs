@@ -694,7 +694,27 @@ namespace PostHog
         }
 
         /// <summary>
+        /// Gets a feature flag by key.
+        /// Returns a PostHogFeatureFlag object that provides access to the flag value and payload.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <returns>The feature flag object</returns>
+        /// <example>
+        /// var flag = PostHog.GetFeatureFlag("new-checkout");
+        /// if (flag.IsEnabled) {
+        ///     var config = flag.GetPayload&lt;CheckoutConfig&gt;();
+        /// }
+        /// </example>
+        public static PostHogFeatureFlag GetFeatureFlag(string key)
+        {
+            if (!EnsureInitialized())
+                return PostHogFeatureFlag.Null;
+            return _instance.GetFeatureFlagInternal(key);
+        }
+
+        /// <summary>
         /// Checks if a feature flag is enabled.
+        /// Shorthand for GetFeatureFlag(key).IsEnabled.
         /// </summary>
         /// <param name="key">The flag key</param>
         /// <param name="defaultValue">Default value if flag not found</param>
@@ -704,78 +724,6 @@ namespace PostHog
             if (!EnsureInitialized())
                 return defaultValue;
             return _instance.IsFeatureEnabledInternal(key, defaultValue);
-        }
-
-        /// <summary>
-        /// Gets a feature flag value.
-        /// </summary>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if flag not found</param>
-        /// <returns>The flag value (bool, string variant, or default)</returns>
-        public static object GetFeatureFlag(string key, object defaultValue = null)
-        {
-            if (!EnsureInitialized())
-                return defaultValue;
-            return _instance.GetFeatureFlagInternal(key, defaultValue);
-        }
-
-        /// <summary>
-        /// Gets a feature flag value with type conversion.
-        /// </summary>
-        /// <typeparam name="T">The expected type</typeparam>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if flag not found or wrong type</param>
-        /// <returns>The flag value or default</returns>
-        public static T GetFeatureFlag<T>(string key, T defaultValue = default)
-        {
-            if (!EnsureInitialized())
-                return defaultValue;
-            return _instance.GetFeatureFlagInternal(key, defaultValue);
-        }
-
-        /// <summary>
-        /// Gets the payload attached to a feature flag.
-        /// </summary>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if payload not found</param>
-        /// <returns>The payload object or default</returns>
-        public static object GetFeatureFlagPayload(string key, object defaultValue = null)
-        {
-            if (!EnsureInitialized())
-                return defaultValue;
-            return _instance.GetFeatureFlagPayloadInternal(key, defaultValue);
-        }
-
-        /// <summary>
-        /// Gets the payload attached to a feature flag with type conversion.
-        /// </summary>
-        /// <typeparam name="T">The expected type</typeparam>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if payload not found or wrong type</param>
-        /// <returns>The payload or default</returns>
-        public static T GetFeatureFlagPayload<T>(string key, T defaultValue = default)
-        {
-            if (!EnsureInitialized())
-                return defaultValue;
-            return _instance.GetFeatureFlagPayloadInternal(key, defaultValue);
-        }
-
-        /// <summary>
-        /// Gets the payload attached to a feature flag as a PostHogJson object.
-        /// Provides easy access to nested JSON values with type-safe accessors.
-        /// </summary>
-        /// <param name="key">The flag key</param>
-        /// <returns>The payload as PostHogJson, or PostHogJson.Null if not found</returns>
-        /// <example>
-        /// var payload = PostHog.GetFeatureFlagPayloadJson("checkout-config");
-        /// var theme = payload["theme"].GetString("light");
-        /// var maxItems = payload["settings"]["maxItems"].GetInt(10);
-        /// </example>
-        public static PostHogJson GetFeatureFlagPayloadJson(string key)
-        {
-            if (!EnsureInitialized())
-                return PostHogJson.Null;
-            return _instance.GetFeatureFlagPayloadJsonInternal(key);
         }
 
         /// <summary>
@@ -886,167 +834,26 @@ namespace PostHog
 
         bool IsFeatureEnabledInternal(string key, bool defaultValue)
         {
-            var value = GetFeatureFlagInternal(key, null);
+            var flag = GetFeatureFlagInternal(key);
 
-            if (value == null)
+            if (!flag.Value.HasValue)
                 return defaultValue;
 
-            if (value is bool b)
-                return b;
-
-            // String variant = enabled
-            if (value is string s)
-                return !string.IsNullOrEmpty(s);
-
-            return defaultValue;
+            return flag.IsEnabled;
         }
 
-        object GetFeatureFlagInternal(string key, object defaultValue)
+        PostHogFeatureFlag GetFeatureFlagInternal(string key)
         {
             var value = _featureFlagManager.GetFlag(key);
-
-            if (value == null)
-                return defaultValue;
+            var payload = _featureFlagManager.GetPayload(key);
 
             // Track flag access for experiments
-            if (_config.SendFeatureFlagEvent)
+            if (value != null && _config.SendFeatureFlagEvent)
             {
                 _featureFlagManager.TrackFlagCalled(key, value);
             }
 
-            return value;
-        }
-
-        T GetFeatureFlagInternal<T>(string key, T defaultValue)
-        {
-            var value = GetFeatureFlagInternal(key, (object)null);
-
-            if (value == null)
-                return defaultValue;
-
-            // Try direct cast
-            if (value is T t)
-                return t;
-
-            // Try conversion
-            try
-            {
-                return (T)Convert.ChangeType(value, typeof(T));
-            }
-            catch
-            {
-                return defaultValue;
-            }
-        }
-
-        object GetFeatureFlagPayloadInternal(string key, object defaultValue)
-        {
-            var payload = _featureFlagManager.GetPayload(key);
-
-            if (payload == null)
-                return defaultValue;
-
-            // If payload is a JSON string, try to parse it
-            if (payload is string jsonStr && !string.IsNullOrEmpty(jsonStr))
-            {
-                try
-                {
-                    return JsonSerializer.DeserializeDictionary(jsonStr) ?? payload;
-                }
-                catch
-                {
-                    return payload;
-                }
-            }
-
-            return payload;
-        }
-
-        T GetFeatureFlagPayloadInternal<T>(string key, T defaultValue)
-        {
-            var rawPayload = _featureFlagManager.GetPayload(key);
-
-            if (rawPayload == null)
-                return defaultValue;
-
-            // If already the right type, return directly
-            if (rawPayload is T t)
-                return t;
-
-            // For complex types (classes), try JSON deserialization
-            var targetType = typeof(T);
-            if (targetType.IsClass && targetType != typeof(string))
-            {
-                string jsonStr = GetPayloadAsJsonString(rawPayload);
-                if (!string.IsNullOrEmpty(jsonStr))
-                {
-                    try
-                    {
-                        // Use custom deserializer if provided
-                        if (_config.PayloadDeserializer != null)
-                        {
-                            var result = _config.PayloadDeserializer(jsonStr, targetType);
-                            if (result is T deserialized)
-                                return deserialized;
-                        }
-                        else
-                        {
-                            // Fall back to Unity's JsonUtility
-                            return JsonUtility.FromJson<T>(jsonStr);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        PostHogLogger.Debug(
-                            $"Failed to deserialize payload to {targetType.Name}: {ex.Message}"
-                        );
-                    }
-                }
-            }
-
-            // Try simple type conversion for primitives
-            try
-            {
-                return (T)Convert.ChangeType(rawPayload, targetType);
-            }
-            catch
-            {
-                return defaultValue;
-            }
-        }
-
-        string GetPayloadAsJsonString(object payload)
-        {
-            if (payload == null)
-                return null;
-
-            // If it's already a string, assume it's JSON
-            if (payload is string str)
-                return str;
-
-            // If it's a dictionary or other object, serialize it
-            if (payload is Dictionary<string, object> || payload is List<object>)
-            {
-                return JsonSerializer.Serialize(payload);
-            }
-
-            return null;
-        }
-
-        PostHogJson GetFeatureFlagPayloadJsonInternal(string key)
-        {
-            var payload = _featureFlagManager.GetPayload(key);
-
-            if (payload == null)
-                return PostHogJson.Null;
-
-            // If payload is a JSON string, parse it first
-            if (payload is string jsonStr && !string.IsNullOrEmpty(jsonStr))
-            {
-                return PostHogJson.Parse(jsonStr);
-            }
-
-            return new PostHogJson(payload);
+            return new PostHogFeatureFlag(key, value, payload);
         }
 
         #endregion
