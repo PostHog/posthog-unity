@@ -215,11 +215,11 @@ namespace PostHog
 
         IStorageProvider CreateStorageProvider()
         {
-    #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL && !UNITY_EDITOR
             return new PlayerPrefsStorageProvider();
-    #else
+#else
             return new FileStorageProvider();
-    #endif
+#endif
         }
 
         #endregion
