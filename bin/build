@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+#/ Usage: bin/build [-u|--unity]
+#/ Description: Validates that the Unity package compiles successfully.
+#/
+#/ Options:
+#/   -u, --unity    Use Unity Editor in batch mode (requires Unity installed)
+#/                  Without this flag, uses dotnet with Unity stubs for quick validation
+#/
+#/ The script supports two modes:
+#/
+#/ 1. Default (dotnet): Creates a temporary .csproj with Unity stub assemblies
+#/    and runs dotnet build. Fast and works without Unity installed.
+#/
+#/ 2. Unity mode (-u): Uses Unity Editor in batch mode to compile the package
+#/    in a real Unity environment. More accurate but requires Unity.
+source bin/helpers/_utils.sh
+set_source_and_root_dir
+
+PACKAGE_DIR="./com.posthog.unity"
+TEMP_PROJECT="$PACKAGE_DIR/.temp-build.csproj"
+TEST_PROJECT_DIR="./TestProject"
+
+use_unity=false
+
+while (( "$#" )); do
+    key="$1"
+    shift
+    case "$key" in
+        -u|--unity)
+            use_unity=true
+        ;;
+        -\?|-h|--help)
+            grep '^#/' <"$0" | cut -c4-
+            exit
+        ;;
+    esac
+done
+
+# Find Unity Editor
+find_unity() {
+    # macOS Unity Hub location
+    if [[ -d "/Applications/Unity/Hub/Editor" ]]; then
+        # Find the latest version
+        local latest=$(ls -1 "/Applications/Unity/Hub/Editor" | sort -V | tail -1)
+        if [[ -n "$latest" ]]; then
+            echo "/Applications/Unity/Hub/Editor/$latest/Unity.app/Contents/MacOS/Unity"
+            return 0
+        fi
+    fi
+
+    # Check if Unity is in PATH
+    if type Unity >/dev/null 2>&1; then
+        echo "Unity"
+        return 0
+    fi
+
+    return 1
+}
+
+# Unity batch mode build
+build_with_unity() {
+    local unity_path
+    unity_path=$(find_unity) || {
+        echo "Unity Editor not found. Install Unity or use default mode (without -u flag)." 1>&2
+        exit 1
+    }
+
+    echo "Using Unity at: $unity_path"
+
+    # Create a minimal test project if it doesn't exist
+    if [[ ! -d "$TEST_PROJECT_DIR" ]]; then
+        echo "Creating test Unity project..."
+        mkdir -p "$TEST_PROJECT_DIR/Assets"
+        mkdir -p "$TEST_PROJECT_DIR/Packages"
+
+        # Create manifest.json that references our local package
+        cat > "$TEST_PROJECT_DIR/Packages/manifest.json" << MANIFEST
+{
+  "dependencies": {
+    "com.posthog.unity": "file:../../com.posthog.unity"
+  }
+}
+MANIFEST
+    fi
+
+    echo "Compiling with Unity (this may take a moment)..."
+
+    # Run Unity in batch mode - it will compile all scripts and exit
+    # -quit: Exit after compilation
+    # -batchmode: No UI
+    # -nographics: No GPU required
+    # -logFile -: Log to stdout
+    if "$unity_path" \
+        -batchmode \
+        -nographics \
+        -quit \
+        -projectPath "$TEST_PROJECT_DIR" \
+        -logFile - 2>&1 | tee /tmp/unity-build.log | grep -E "(error|Error|ERROR|Compilation failed)"; then
+        echo "Build failed! Check /tmp/unity-build.log for details." 1>&2
+        exit 1
+    fi
+
+    # Check exit code from Unity (need to capture it differently due to pipe)
+    if grep -q "Compilation failed" /tmp/unity-build.log; then
+        echo "Build failed!" 1>&2
+        exit 1
+    fi
+
+    echo "Build succeeded!"
+}
+
+# Dotnet build with Unity stubs
+build_with_dotnet() {
+    if ! type dotnet >/dev/null 2>&1; then
+        echo ".NET CLI is not installed!" 1>&2
+        exit 1
+    fi
+
+    echo "Validating package compilation with dotnet..."
+
+    # Create a temporary project file for compilation validation
+    cat > "$TEMP_PROJECT" << 'PROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Disable default compile items since we specify them explicitly -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Suppress framework compatibility warning for Unity stubs -->
+    <NoWarn>NU1701</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Runtime/**/*.cs" />
+    <Compile Include="Editor/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Unity stub assemblies for compilation validation -->
+    <PackageReference Include="Unity3D.SDK" Version="2021.1.14.1" />
+  </ItemGroup>
+</Project>
+PROJ
+
+    cleanup() {
+        rm -f "$TEMP_PROJECT"
+        rm -rf "$PACKAGE_DIR/bin" "$PACKAGE_DIR/obj"
+    }
+
+    trap cleanup EXIT
+
+    echo "Building $PACKAGE_DIR..."
+
+    if dotnet build "$TEMP_PROJECT" --nologo; then
+        echo "Build succeeded!"
+    else
+        echo "Build failed!" 1>&2
+        exit 1
+    fi
+}
+
+# Main
+if $use_unity; then
+    build_with_unity
+else
+    build_with_dotnet
+fi

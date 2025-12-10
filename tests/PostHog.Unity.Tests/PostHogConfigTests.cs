@@ -26,10 +26,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithValidConfig_DoesNotThrow()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key"
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key" };
 
             var exception = Record.Exception(() => config.Validate());
             Assert.Null(exception);
@@ -38,10 +35,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithNullApiKey_ThrowsArgumentException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = null
-            };
+            var config = new PostHogConfig { ApiKey = null };
 
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             Assert.Equal("ApiKey", ex.ParamName);
@@ -50,10 +44,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithEmptyApiKey_ThrowsArgumentException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = ""
-            };
+            var config = new PostHogConfig { ApiKey = "" };
 
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             Assert.Equal("ApiKey", ex.ParamName);
@@ -62,10 +53,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithWhitespaceApiKey_ThrowsArgumentException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "   "
-            };
+            var config = new PostHogConfig { ApiKey = "   " };
 
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             Assert.Equal("ApiKey", ex.ParamName);
@@ -74,11 +62,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithNullHost_ThrowsArgumentException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                Host = null
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", Host = null };
 
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             Assert.Equal("Host", ex.ParamName);
@@ -87,11 +71,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithEmptyHost_ThrowsArgumentException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                Host = ""
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", Host = "" };
 
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             Assert.Equal("Host", ex.ParamName);
@@ -100,11 +80,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithZeroFlushAt_ThrowsArgumentOutOfRangeException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                FlushAt = 0
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", FlushAt = 0 };
 
             var ex = Assert.Throws<ArgumentOutOfRangeException>(() => config.Validate());
             Assert.Equal("FlushAt", ex.ParamName);
@@ -113,11 +89,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithNegativeFlushAt_ThrowsArgumentOutOfRangeException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                FlushAt = -1
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", FlushAt = -1 };
 
             var ex = Assert.Throws<ArgumentOutOfRangeException>(() => config.Validate());
             Assert.Equal("FlushAt", ex.ParamName);
@@ -126,11 +98,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithZeroFlushIntervalSeconds_ThrowsArgumentOutOfRangeException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                FlushIntervalSeconds = 0
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", FlushIntervalSeconds = 0 };
 
             var ex = Assert.Throws<ArgumentOutOfRangeException>(() => config.Validate());
             Assert.Equal("FlushIntervalSeconds", ex.ParamName);
@@ -139,11 +107,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithZeroMaxQueueSize_ThrowsArgumentOutOfRangeException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                MaxQueueSize = 0
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", MaxQueueSize = 0 };
 
             var ex = Assert.Throws<ArgumentOutOfRangeException>(() => config.Validate());
             Assert.Equal("MaxQueueSize", ex.ParamName);
@@ -152,11 +116,7 @@ public class PostHogConfigTests
         [Fact]
         public void WithZeroMaxBatchSize_ThrowsArgumentOutOfRangeException()
         {
-            var config = new PostHogConfig
-            {
-                ApiKey = "phc_test_key",
-                MaxBatchSize = 0
-            };
+            var config = new PostHogConfig { ApiKey = "phc_test_key", MaxBatchSize = 0 };
 
             var ex = Assert.Throws<ArgumentOutOfRangeException>(() => config.Validate());
             Assert.Equal("MaxBatchSize", ex.ParamName);
@@ -168,7 +128,7 @@ public class PostHogConfigTests
             var config = new PostHogConfig
             {
                 ApiKey = "phc_test_key",
-                Host = "https://eu.posthog.com"
+                Host = "https://eu.posthog.com",
             };
 
             var exception = Record.Exception(() => config.Validate());
@@ -181,10 +141,7 @@ public class PostHogConfigTests
         [Fact]
         public void CanBeSetToAlways()
         {
-            var config = new PostHogConfig
-            {
-                PersonProfiles = PersonProfiles.Always
-            };
+            var config = new PostHogConfig { PersonProfiles = PersonProfiles.Always };
 
             Assert.Equal(PersonProfiles.Always, config.PersonProfiles);
         }
@@ -192,10 +149,7 @@ public class PostHogConfigTests
         [Fact]
         public void CanBeSetToNever()
         {
-            var config = new PostHogConfig
-            {
-                PersonProfiles = PersonProfiles.Never
-            };
+            var config = new PostHogConfig { PersonProfiles = PersonProfiles.Never };
 
             Assert.Equal(PersonProfiles.Never, config.PersonProfiles);
         }
@@ -206,10 +160,7 @@ public class PostHogConfigTests
         [Fact]
         public void CanBeSetToDebug()
         {
-            var config = new PostHogConfig
-            {
-                LogLevel = PostHogLogLevel.Debug
-            };
+            var config = new PostHogConfig { LogLevel = PostHogLogLevel.Debug };
 
             Assert.Equal(PostHogLogLevel.Debug, config.LogLevel);
         }
@@ -217,10 +168,7 @@ public class PostHogConfigTests
         [Fact]
         public void CanBeSetToNone()
         {
-            var config = new PostHogConfig
-            {
-                LogLevel = PostHogLogLevel.None
-            };
+            var config = new PostHogConfig { LogLevel = PostHogLogLevel.None };
 
             Assert.Equal(PostHogLogLevel.None, config.LogLevel);
         }

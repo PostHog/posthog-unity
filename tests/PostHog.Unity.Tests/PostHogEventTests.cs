@@ -25,8 +25,14 @@ public class PostHogEventTests
             Assert.True(DateTime.TryParse(evt.Timestamp, out var timestamp));
             // Parse returns local time, convert to UTC for comparison
             timestamp = timestamp.ToUniversalTime();
-            Assert.True(timestamp >= before.AddSeconds(-1), $"Timestamp {timestamp} should be >= {before.AddSeconds(-1)}");
-            Assert.True(timestamp <= after.AddSeconds(1), $"Timestamp {timestamp} should be <= {after.AddSeconds(1)}");
+            Assert.True(
+                timestamp >= before.AddSeconds(-1),
+                $"Timestamp {timestamp} should be >= {before.AddSeconds(-1)}"
+            );
+            Assert.True(
+                timestamp <= after.AddSeconds(1),
+                $"Timestamp {timestamp} should be <= {after.AddSeconds(1)}"
+            );
         }
 
         [Fact]
@@ -108,11 +114,7 @@ public class PostHogEventTests
         [Fact]
         public void CopiesProperties()
         {
-            var props = new Dictionary<string, object>
-            {
-                ["key1"] = "value1",
-                ["key2"] = 42
-            };
+            var props = new Dictionary<string, object> { ["key1"] = "value1", ["key2"] = 42 };
             var evt = new PostHogEvent("test_event", "user123", props);
 
             Assert.Equal(2, evt.Properties.Count);
