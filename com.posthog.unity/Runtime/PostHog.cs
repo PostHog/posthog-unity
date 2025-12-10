@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace PostHog
 {
@@ -52,17 +53,32 @@ namespace PostHog
 
         /// <summary>
         /// Identifies the current user with a known ID.
+        /// Reloads feature flags for the new identity before completing.
         /// </summary>
-        public static void Identify(
+        /// <param name="distinctId">The user's unique identifier</param>
+        /// <returns>A task that completes when feature flags are ready</returns>
+        public static Task IdentifyAsync(string distinctId) => PostHogSDK.IdentifyAsync(distinctId);
+
+        /// <summary>
+        /// Identifies the current user with a known ID.
+        /// Reloads feature flags for the new identity before completing.
+        /// </summary>
+        /// <param name="distinctId">The user's unique identifier</param>
+        /// <param name="userProperties">Properties to set on the user profile</param>
+        /// <param name="userPropertiesSetOnce">Properties to set only if not already set</param>
+        /// <returns>A task that completes when feature flags are ready</returns>
+        public static Task IdentifyAsync(
             string distinctId,
-            Dictionary<string, object> userProperties = null,
+            Dictionary<string, object> userProperties,
             Dictionary<string, object> userPropertiesSetOnce = null
-        ) => PostHogSDK.Identify(distinctId, userProperties, userPropertiesSetOnce);
+        ) => PostHogSDK.IdentifyAsync(distinctId, userProperties, userPropertiesSetOnce);
 
         /// <summary>
         /// Resets the current identity to anonymous.
+        /// Reloads feature flags for the anonymous user before completing.
         /// </summary>
-        public static void Reset() => PostHogSDK.Reset();
+        /// <returns>A task that completes when feature flags are ready</returns>
+        public static Task ResetAsync() => PostHogSDK.ResetAsync();
 
         /// <summary>
         /// Creates an alias linking the current distinct ID to another ID.
@@ -178,14 +194,8 @@ namespace PostHog
         /// <summary>
         /// Reloads feature flags from the server.
         /// </summary>
-        public static void ReloadFeatureFlags() => PostHogSDK.ReloadFeatureFlags();
-
-        /// <summary>
-        /// Reloads feature flags from the server with a callback.
-        /// </summary>
-        /// <param name="onComplete">Callback when reload is complete</param>
-        public static void ReloadFeatureFlags(Action onComplete) =>
-            PostHogSDK.ReloadFeatureFlags(onComplete);
+        /// <returns>A task that completes when flags are loaded</returns>
+        public static Task ReloadFeatureFlagsAsync() => PostHogSDK.ReloadFeatureFlagsAsync();
 
         /// <summary>
         /// Sets person properties to be sent with feature flag requests.

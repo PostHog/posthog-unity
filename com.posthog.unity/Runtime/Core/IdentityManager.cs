@@ -65,11 +65,6 @@ namespace PostHog
             }
         }
 
-        /// <summary>
-        /// Event raised when identity changes (identify or reset).
-        /// </summary>
-        public event Action OnIdentityChanged;
-
         public IdentityManager(PostHogConfig config, IStorageProvider storage)
         {
             _config = config;
@@ -107,7 +102,6 @@ namespace PostHog
                 SaveState();
                 PostHogLogger.Debug($"Identified as {distinctId}");
 
-                OnIdentityChanged?.Invoke();
                 return previousAnonymousId;
             }
         }
@@ -130,8 +124,6 @@ namespace PostHog
 
                 SaveState();
                 PostHogLogger.Debug($"Reset to anonymous: {_anonymousId}");
-
-                OnIdentityChanged?.Invoke();
             }
         }
 

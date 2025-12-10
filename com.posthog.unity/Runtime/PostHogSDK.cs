@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace PostHog
@@ -141,9 +142,6 @@ namespace PostHog
                 config.OnFeatureFlagsLoaded?.Invoke();
                 OnFeatureFlagsLoadedInternal?.Invoke();
             };
-
-            // Subscribe to identity changes for automatic flag reload
-            _identityManager.OnIdentityChanged += OnIdentityChangedInternal;
 
             // Start the event queue
             _eventQueue.Start(this);
@@ -324,26 +322,54 @@ namespace PostHog
 
         /// <summary>
         /// Identifies the current user with a known ID.
+        /// Reloads feature flags for the new identity before completing.
         /// </summary>
-        public static void Identify(
+        /// <param name="distinctId">The user's unique identifier</param>
+        /// <returns>A task that completes when feature flags are ready</returns>
+        public static Task IdentifyAsync(string distinctId)
+        {
+            return IdentifyAsync(distinctId, null, null);
+        }
+
+        /// <summary>
+        /// Identifies the current user with a known ID.
+        /// Reloads feature flags for the new identity before completing.
+        /// </summary>
+        /// <param name="distinctId">The user's unique identifier</param>
+        /// <param name="userProperties">Properties to set on the user profile</param>
+        /// <param name="userPropertiesSetOnce">Properties to set only if not already set</param>
+        /// <returns>A task that completes when feature flags are ready</returns>
+        public static Task IdentifyAsync(
             string distinctId,
-            Dictionary<string, object> userProperties = null,
+            Dictionary<string, object> userProperties,
             Dictionary<string, object> userPropertiesSetOnce = null
         )
         {
             if (!EnsureInitialized())
-                return;
-            _instance.IdentifyInternal(distinctId, userProperties, userPropertiesSetOnce);
+            {
+                return Task.CompletedTask;
+            }
+
+            return _instance.IdentifyInternalAsync(
+                distinctId,
+                userProperties,
+                userPropertiesSetOnce
+            );
         }
 
         /// <summary>
         /// Resets the current identity to anonymous.
+        /// Reloads feature flags for the anonymous user before completing.
         /// </summary>
-        public static void Reset()
+        /// <returns>A task that completes when feature flags are ready</returns>
+        public static Task ResetAsync()
         {
             if (!EnsureInitialized())
-                return;
-            _instance.ResetInternal();
+            {
+                return Task.CompletedTask;
+            }
+
+            return _instance.ResetInternalAsync();
         }
 
         /// <summary>
@@ -356,16 +382,15 @@ namespace PostHog
             _instance.AliasInternal(alias);
         }
 
-        void IdentifyInternal(
+        async Task IdentifyInternalAsync(
             string distinctId,
             Dictionary<string, object> userProperties,
             Dictionary<string, object> userPropertiesSetOnce
         )
         {
-            // Cache person properties for feature flag evaluation BEFORE identity change
-            // This ensures when the identity change triggers a flag reload, the properties
-            // are already available. This avoids ingestion lag where the $identify event
-            // hasn't been processed yet. Matches iOS/Android SDK behavior.
+            // Cache person properties for feature flag evaluation BEFORE updating identity.
+            // This avoids ingestion lag where the $identify event hasn't been processed yet.
+            // Matches iOS/Android SDK behavior.
             SetPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce);
 
             var previousAnonymousId = _identityManager.Identify(distinctId);
@@ -389,6 +414,12 @@ namespace PostHog
             }
 
             CaptureInternal("$identify", properties);
+
+            // Reload feature flags with the new identity and cached person properties
+            if (_config.PreloadFeatureFlags)
+            {
+                await _featureFlagManager.ReloadFeatureFlagsAsync(this);
+            }
 
             PostHogLogger.Debug($"Identified as: {distinctId}");
         }
@@ -434,7 +465,7 @@ namespace PostHog
             );
         }
 
-        void ResetInternal()
+        async Task ResetInternalAsync()
         {
             _identityManager.Reset();
             _sessionManager.StartNewSession();
@@ -450,6 +481,12 @@ namespace PostHog
                 reloadFeatureFlags: false,
                 this
             );
+
+            // Reload feature flags for the now-anonymous user
+            if (_config.PreloadFeatureFlags)
+            {
+                await _featureFlagManager.ReloadFeatureFlagsAsync(this);
+            }
 
             PostHogLogger.Debug("Identity reset");
         }
@@ -744,25 +781,14 @@ namespace PostHog
         /// <summary>
         /// Reloads feature flags from the server.
         /// </summary>
-        public static void ReloadFeatureFlags()
-        {
-            if (!EnsureInitialized())
-                return;
-            _instance._featureFlagManager.ReloadFeatureFlags(_instance);
-        }
-
-        /// <summary>
-        /// Reloads feature flags from the server with a callback.
-        /// </summary>
-        /// <param name="onComplete">Callback when reload is complete</param>
-        public static void ReloadFeatureFlags(Action onComplete)
+        /// <returns>A task that completes when flags are loaded</returns>
+        public static Task ReloadFeatureFlagsAsync()
         {
             if (!EnsureInitialized())
             {
-                onComplete?.Invoke();
-                return;
+                return Task.CompletedTask;
             }
-            _instance._featureFlagManager.ReloadFeatureFlags(_instance, onComplete);
+            return _instance._featureFlagManager.ReloadFeatureFlagsAsync(_instance);
         }
 
         /// <summary>
@@ -1021,15 +1047,6 @@ namespace PostHog
             }
 
             return new PostHogJson(payload);
-        }
-
-        void OnIdentityChangedInternal()
-        {
-            // Reload flags when identity changes
-            if (_config.PreloadFeatureFlags)
-            {
-                _featureFlagManager.ReloadFeatureFlags(this);
-            }
         }
 
         #endregion
