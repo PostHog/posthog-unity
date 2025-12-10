@@ -23,6 +23,11 @@ namespace PostHog
         DateTime? _pausedUntil;
         int _retryCount;
 
+        // Local adjusted values for batch size (reduced on 413 errors)
+        // These are separate from config to avoid mutating shared state
+        int _adjustedMaxBatchSize;
+        int _adjustedFlushAt;
+
         const int RetryDelaySeconds = 5;
         const int MaxRetryDelaySeconds = 30;
 
@@ -35,6 +40,10 @@ namespace PostHog
             _config = config;
             _storage = storage;
             _networkClient = networkClient;
+
+            // Initialize adjusted values from config
+            _adjustedMaxBatchSize = config.MaxBatchSize;
+            _adjustedFlushAt = config.FlushAt;
         }
 
         /// <summary>
@@ -133,10 +142,10 @@ namespace PostHog
         void FlushIfOverThreshold()
         {
             int count = Count;
-            if (count >= _config.FlushAt)
+            if (count >= _adjustedFlushAt)
             {
                 PostHogLogger.Debug(
-                    $"Queue at threshold ({count}/{_config.FlushAt}), triggering flush"
+                    $"Queue at threshold ({count}/{_adjustedFlushAt}), triggering flush"
                 );
                 Flush();
             }
@@ -214,7 +223,7 @@ namespace PostHog
                         break;
                     }
 
-                    var batchIds = eventIds.Take(_config.MaxBatchSize).ToList();
+                    var batchIds = eventIds.Take(_adjustedMaxBatchSize).ToList();
                     var events = LoadEvents(batchIds);
 
                     if (events.Count == 0)
@@ -366,11 +375,11 @@ namespace PostHog
             // Retry on 413 (handled separately by reducing batch size)
             if (statusCode == 413)
             {
-                // Reduce batch size for next attempt
-                _config.MaxBatchSize = Math.Max(1, _config.MaxBatchSize / 2);
-                _config.FlushAt = Math.Max(1, _config.FlushAt / 2);
+                // Reduce batch size for next attempt (use local adjusted values, not config)
+                _adjustedMaxBatchSize = Math.Max(1, _adjustedMaxBatchSize / 2);
+                _adjustedFlushAt = Math.Max(1, _adjustedFlushAt / 2);
                 PostHogLogger.Warning(
-                    $"Payload too large, reducing batch size to {_config.MaxBatchSize}"
+                    $"Payload too large, reducing batch size to {_adjustedMaxBatchSize}"
                 );
                 return false;
             }
