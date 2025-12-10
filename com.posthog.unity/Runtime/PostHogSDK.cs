@@ -1,3 +1,9 @@
+// PostHog Unity SDK requires Unity 2021.3 or later for C# 9.0 features
+// The check is only enforced when building in Unity (not during unit tests)
+#if UNITY_5_3_OR_NEWER && !UNITY_2021_3_OR_NEWER
+#error "PostHog SDK requires Unity 2021.3 or later"
+#endif
+
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
