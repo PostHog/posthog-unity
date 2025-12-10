@@ -97,13 +97,21 @@ public class PostHogSettingsTests
             PostHogSettingsTestHelper.SetField(settings, "_flushIntervalSeconds", 60);
             PostHogSettingsTestHelper.SetField(settings, "_maxQueueSize", 500);
             PostHogSettingsTestHelper.SetField(settings, "_maxBatchSize", 100);
-            PostHogSettingsTestHelper.SetField(settings, "_captureApplicationLifecycleEvents", false);
+            PostHogSettingsTestHelper.SetField(
+                settings,
+                "_captureApplicationLifecycleEvents",
+                false
+            );
             PostHogSettingsTestHelper.SetField(settings, "_personProfiles", PersonProfiles.Never);
             PostHogSettingsTestHelper.SetField(settings, "_logLevel", PostHogLogLevel.Debug);
             PostHogSettingsTestHelper.SetField(settings, "_reuseAnonymousId", true);
             PostHogSettingsTestHelper.SetField(settings, "_preloadFeatureFlags", false);
             PostHogSettingsTestHelper.SetField(settings, "_sendFeatureFlagEvent", false);
-            PostHogSettingsTestHelper.SetField(settings, "_sendDefaultPersonPropertiesForFlags", false);
+            PostHogSettingsTestHelper.SetField(
+                settings,
+                "_sendDefaultPersonPropertiesForFlags",
+                false
+            );
             PostHogSettingsTestHelper.SetField(settings, "_captureExceptions", false);
             PostHogSettingsTestHelper.SetField(settings, "_exceptionDebounceIntervalMs", 2000);
             PostHogSettingsTestHelper.SetField(settings, "_captureExceptionsInEditor", false);
@@ -170,13 +178,21 @@ public class PostHogSettingsTests
             PostHogSettingsTestHelper.SetField(settings, "_flushIntervalSeconds", 99);
             PostHogSettingsTestHelper.SetField(settings, "_maxQueueSize", 123);
             PostHogSettingsTestHelper.SetField(settings, "_maxBatchSize", 77);
-            PostHogSettingsTestHelper.SetField(settings, "_captureApplicationLifecycleEvents", false);
+            PostHogSettingsTestHelper.SetField(
+                settings,
+                "_captureApplicationLifecycleEvents",
+                false
+            );
             PostHogSettingsTestHelper.SetField(settings, "_personProfiles", PersonProfiles.Always);
             PostHogSettingsTestHelper.SetField(settings, "_logLevel", PostHogLogLevel.Error);
             PostHogSettingsTestHelper.SetField(settings, "_reuseAnonymousId", true);
             PostHogSettingsTestHelper.SetField(settings, "_preloadFeatureFlags", false);
             PostHogSettingsTestHelper.SetField(settings, "_sendFeatureFlagEvent", false);
-            PostHogSettingsTestHelper.SetField(settings, "_sendDefaultPersonPropertiesForFlags", false);
+            PostHogSettingsTestHelper.SetField(
+                settings,
+                "_sendDefaultPersonPropertiesForFlags",
+                false
+            );
             PostHogSettingsTestHelper.SetField(settings, "_captureExceptions", false);
             PostHogSettingsTestHelper.SetField(settings, "_exceptionDebounceIntervalMs", 5000);
             PostHogSettingsTestHelper.SetField(settings, "_captureExceptionsInEditor", false);
