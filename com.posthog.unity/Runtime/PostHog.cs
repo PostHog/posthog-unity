@@ -131,65 +131,29 @@ namespace PostHog
         }
 
         /// <summary>
+        /// Gets a feature flag by key.
+        /// Returns a PostHogFeatureFlag object that provides access to the flag value and payload.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <returns>The feature flag object</returns>
+        /// <example>
+        /// var flag = PostHog.GetFeatureFlag("new-checkout");
+        /// if (flag.IsEnabled) {
+        ///     var config = flag.GetPayload&lt;CheckoutConfig&gt;();
+        /// }
+        /// </example>
+        public static PostHogFeatureFlag GetFeatureFlag(string key) =>
+            PostHogSDK.GetFeatureFlag(key);
+
+        /// <summary>
         /// Checks if a feature flag is enabled.
+        /// Shorthand for GetFeatureFlag(key).IsEnabled.
         /// </summary>
         /// <param name="key">The flag key</param>
         /// <param name="defaultValue">Default value if flag not found</param>
         /// <returns>True if flag is enabled or has a variant value</returns>
         public static bool IsFeatureEnabled(string key, bool defaultValue = false) =>
             PostHogSDK.IsFeatureEnabled(key, defaultValue);
-
-        /// <summary>
-        /// Gets a feature flag value.
-        /// </summary>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if flag not found</param>
-        /// <returns>The flag value (bool, string variant, or default)</returns>
-        public static object GetFeatureFlag(string key, object defaultValue = null) =>
-            PostHogSDK.GetFeatureFlag(key, defaultValue);
-
-        /// <summary>
-        /// Gets a feature flag value with type conversion.
-        /// </summary>
-        /// <typeparam name="T">The expected type</typeparam>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if flag not found or wrong type</param>
-        /// <returns>The flag value or default</returns>
-        public static T GetFeatureFlag<T>(string key, T defaultValue = default) =>
-            PostHogSDK.GetFeatureFlag(key, defaultValue);
-
-        /// <summary>
-        /// Gets the payload attached to a feature flag.
-        /// </summary>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if payload not found</param>
-        /// <returns>The payload object or default</returns>
-        public static object GetFeatureFlagPayload(string key, object defaultValue = null) =>
-            PostHogSDK.GetFeatureFlagPayload(key, defaultValue);
-
-        /// <summary>
-        /// Gets the payload attached to a feature flag with type conversion.
-        /// </summary>
-        /// <typeparam name="T">The expected type</typeparam>
-        /// <param name="key">The flag key</param>
-        /// <param name="defaultValue">Default value if payload not found or wrong type</param>
-        /// <returns>The payload or default</returns>
-        public static T GetFeatureFlagPayload<T>(string key, T defaultValue = default) =>
-            PostHogSDK.GetFeatureFlagPayload(key, defaultValue);
-
-        /// <summary>
-        /// Gets the payload attached to a feature flag as a PostHogJson object.
-        /// Provides easy access to nested JSON values with type-safe accessors.
-        /// </summary>
-        /// <param name="key">The flag key</param>
-        /// <returns>The payload as PostHogJson, or PostHogJson.Null if not found</returns>
-        /// <example>
-        /// var payload = PostHog.GetFeatureFlagPayloadJson("checkout-config");
-        /// var theme = payload["theme"].GetString("light");
-        /// var maxItems = payload["settings"]["maxItems"].GetInt(10);
-        /// </example>
-        public static PostHogJson GetFeatureFlagPayloadJson(string key) =>
-            PostHogSDK.GetFeatureFlagPayloadJson(key);
 
         /// <summary>
         /// Reloads feature flags from the server.

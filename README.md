@@ -127,14 +127,23 @@ PostHog.Unregister("app_version");
 Check feature flags and run experiments:
 
 ```csharp
-// Check if a flag is enabled
-if (PostHog.IsFeatureEnabled("new-checkout-flow"))
+// Get a feature flag
+var flag = PostHog.GetFeatureFlag("new-checkout-flow");
+
+// Check if enabled
+if (flag.IsEnabled)
 {
     // Show new checkout
 }
 
-// Get a multivariate flag value
-string variant = PostHog.GetFeatureFlag<string>("experiment-variant", "control");
+// Get variant value for multivariate flags
+string variant = flag.GetVariant("control");
+
+// Quick check without getting the flag object
+if (PostHog.IsFeatureEnabled("simple-flag"))
+{
+    // Do something
+}
 
 // Manually reload flags
 await PostHog.ReloadFeatureFlagsAsync();
@@ -143,9 +152,9 @@ await PostHog.ReloadFeatureFlagsAsync();
 PostHog.OnFeatureFlagsLoaded += () => UpdateUI();
 ```
 
-### Typed Payload Deserialization
+### Working with Payloads
 
-Deserialize payloads directly to your own classes:
+Access payloads through the feature flag object:
 
 ```csharp
 // Define your payload class (must use [Serializable] and public fields for JsonUtility)
@@ -157,31 +166,18 @@ public class CheckoutConfig
     public bool showBanner;
 }
 
-// Deserialize directly to your type
-var config = PostHog.GetFeatureFlagPayload<CheckoutConfig>("checkout-config");
-Debug.Log($"Theme: {config.theme}, Max items: {config.maxItems}");
-```
-
-For Newtonsoft.Json or other libraries, set a custom deserializer:
-
-```csharp
-PostHog.Setup(new PostHogConfig
+// Get flag and access payload
+var flag = PostHog.GetFeatureFlag("checkout-config");
+if (flag.IsEnabled)
 {
-    ApiKey = "phc_...",
-    // Use Newtonsoft.Json for better compatibility (properties, complex types)
-    PayloadDeserializer = (json, type) => JsonConvert.DeserializeObject(json, type)
-});
-```
+    var config = flag.GetPayload<CheckoutConfig>();
+    Debug.Log($"Theme: {config.theme}, Max items: {config.maxItems}");
+}
 
-### Dynamic Payload Access
-
-For dynamic or nested payloads, use `PostHogJson`:
-
-```csharp
-var payload = PostHog.GetFeatureFlagPayloadJson("checkout-config");
+// For dynamic/nested payloads, use PostHogJson
+var payload = flag.GetPayloadJson();
 string theme = payload["theme"].GetString("light");
 int maxItems = payload["settings"]["maxItems"].GetInt(10);
-string color = payload.GetPath("styles.button.color").GetString("#000");
 ```
 
 ### Flag Targeting Properties
