@@ -23,7 +23,8 @@ namespace PostHog.ErrorTracking
         public ExceptionManager(
             PostHogConfig config,
             Action<string, Dictionary<string, object>> captureEvent,
-            Func<string> getDistinctId)
+            Func<string> getDistinctId
+        )
         {
             _config = config;
             _captureEvent = captureEvent;
@@ -75,7 +76,10 @@ namespace PostHog.ErrorTracking
         /// </summary>
         /// <param name="exception">The exception to capture</param>
         /// <param name="properties">Optional additional properties</param>
-        public void CaptureException(Exception exception, Dictionary<string, object> properties = null)
+        public void CaptureException(
+            Exception exception,
+            Dictionary<string, object> properties = null
+        )
         {
             if (exception == null)
             {
@@ -117,20 +121,26 @@ namespace PostHog.ErrorTracking
             CaptureExceptionFromLog(message, stackTrace, handled: false);
         }
 
-        private void CaptureExceptionInternal(Exception exception, Dictionary<string, object> additionalProperties, bool handled)
+        private void CaptureExceptionInternal(
+            Exception exception,
+            Dictionary<string, object> additionalProperties,
+            bool handled
+        )
         {
             try
             {
-                var properties = additionalProperties != null
-                    ? new Dictionary<string, object>(additionalProperties)
-                    : new Dictionary<string, object>();
+                var properties =
+                    additionalProperties != null
+                        ? new Dictionary<string, object>(additionalProperties)
+                        : new Dictionary<string, object>();
 
                 // Add person URL for error tracking
                 var distinctId = _getDistinctId?.Invoke();
                 if (!string.IsNullOrEmpty(distinctId))
                 {
                     var host = _config.Host.TrimEnd('/').Replace(".i.", ".");
-                    properties["$exception_personURL"] = $"{host}/project/{_config.ApiKey}/person/{distinctId}";
+                    properties["$exception_personURL"] =
+                        $"{host}/project/{_config.ApiKey}/person/{distinctId}";
                 }
 
                 ExceptionPropertiesBuilder.Build(properties, exception, handled);
@@ -157,10 +167,16 @@ namespace PostHog.ErrorTracking
                 if (!string.IsNullOrEmpty(distinctId))
                 {
                     var host = _config.Host.TrimEnd('/').Replace(".i.", ".");
-                    properties["$exception_personURL"] = $"{host}/project/{_config.ApiKey}/person/{distinctId}";
+                    properties["$exception_personURL"] =
+                        $"{host}/project/{_config.ApiKey}/person/{distinctId}";
                 }
 
-                ExceptionPropertiesBuilder.BuildFromLogMessage(properties, message, stackTrace, handled);
+                ExceptionPropertiesBuilder.BuildFromLogMessage(
+                    properties,
+                    message,
+                    stackTrace,
+                    handled
+                );
 
                 _captureEvent?.Invoke("$exception", properties);
                 _lastExceptionTime = DateTime.UtcNow;

@@ -81,7 +81,12 @@ namespace PostHog.ErrorTracking
         /// <summary>
         /// Called by Unity for non-exception log messages.
         /// </summary>
-        public void LogFormat(LogType logType, UnityEngine.Object context, string format, params object[] args)
+        public void LogFormat(
+            LogType logType,
+            UnityEngine.Object context,
+            string format,
+            params object[] args
+        )
         {
             // Pass through to original handler
             // We don't capture regular log messages here - that's handled separately

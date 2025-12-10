@@ -90,7 +90,7 @@ namespace PostHog.ErrorTracking
                     ["function"] = method?.Name ?? "",
                     ["module"] = method?.DeclaringType?.FullName ?? "",
                     ["lineno"] = lineNumber > 0 ? (object)lineNumber : null,
-                    ["colno"] = columnNumber > 0 ? (object)columnNumber : null
+                    ["colno"] = columnNumber > 0 ? (object)columnNumber : null,
                 };
 
                 frames.Add(frameDetails);
@@ -128,7 +128,7 @@ namespace PostHog.ErrorTracking
                     ["filename"] = TryResolveFileNameForMono(filenameWithoutZeroes),
                     ["abs_path"] = filenameWithoutZeroes,
                     ["function"] = functionName,
-                    ["lineno"] = lineNo == -1 ? null : (object)lineNo
+                    ["lineno"] = lineNo == -1 ? null : (object)lineNo,
                 };
             }
             catch
@@ -180,7 +180,7 @@ namespace PostHog.ErrorTracking
                 ["function"] = functionName,
                 ["filename"] = null,
                 ["abs_path"] = null,
-                ["lineno"] = null
+                ["lineno"] = null,
             };
         }
 

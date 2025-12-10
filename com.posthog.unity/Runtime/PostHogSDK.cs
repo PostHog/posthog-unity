@@ -254,7 +254,10 @@ namespace PostHog
         /// </summary>
         /// <param name="exception">The exception to capture</param>
         /// <param name="properties">Optional additional properties</param>
-        public static void CaptureException(Exception exception, Dictionary<string, object> properties = null)
+        public static void CaptureException(
+            Exception exception,
+            Dictionary<string, object> properties = null
+        )
         {
             if (!EnsureInitialized())
                 return;

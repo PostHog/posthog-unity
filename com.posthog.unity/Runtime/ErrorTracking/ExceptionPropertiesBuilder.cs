@@ -20,9 +20,11 @@ namespace PostHog.ErrorTracking
         public static Dictionary<string, object> Build(
             Dictionary<string, object> properties,
             Exception exception,
-            bool handled = false)
+            bool handled = false
+        )
         {
-            properties["$exception_type"] = exception.GetType().FullName ?? exception.GetType().Name;
+            properties["$exception_type"] =
+                exception.GetType().FullName ?? exception.GetType().Name;
             properties["$exception_message"] = exception.Message;
             properties["$exception_level"] = "error";
             properties["$exception_source"] = "unity_sdk";
@@ -46,7 +48,8 @@ namespace PostHog.ErrorTracking
             Dictionary<string, object> properties,
             string message,
             string stackTrace,
-            bool handled = false)
+            bool handled = false
+        )
         {
             var exceptionType = ParseExceptionType(message);
             var exceptionMessage = ParseExceptionMessage(message);
@@ -78,13 +81,13 @@ namespace PostHog.ErrorTracking
                     ["type"] = handled ? "generic" : "unity.log",
                     ["handled"] = handled,
                     ["source"] = "unity",
-                    ["synthetic"] = true
+                    ["synthetic"] = true,
                 },
                 ["stacktrace"] = new Dictionary<string, object>
                 {
                     ["frames"] = frames,
-                    ["type"] = "raw"
-                }
+                    ["type"] = "raw",
+                },
             };
 
             properties["$exception_list"] = new List<Dictionary<string, object>> { exceptionEntry };
@@ -92,7 +95,10 @@ namespace PostHog.ErrorTracking
             return properties;
         }
 
-        private static List<Dictionary<string, object>> BuildExceptionList(Exception exception, bool handled)
+        private static List<Dictionary<string, object>> BuildExceptionList(
+            Exception exception,
+            bool handled
+        )
         {
             var list = new List<Dictionary<string, object>>();
             var seen = new HashSet<Exception>();
@@ -103,7 +109,8 @@ namespace PostHog.ErrorTracking
             while (stack.Count > 0 && seen.Count <= MaxExceptions)
             {
                 var (ex, depth) = stack.Pop();
-                if (!seen.Add(ex)) continue;
+                if (!seen.Add(ex))
+                    continue;
 
                 var frames = UnityStackTraceParser.ParseException(ex);
                 if (frames.Count > MaxStackFrames)
@@ -111,23 +118,25 @@ namespace PostHog.ErrorTracking
                     frames = frames.GetRange(0, MaxStackFrames);
                 }
 
-                list.Add(new Dictionary<string, object>
-                {
-                    ["type"] = ex.GetType().FullName ?? ex.GetType().Name,
-                    ["value"] = ex.Message,
-                    ["mechanism"] = new Dictionary<string, object>
+                list.Add(
+                    new Dictionary<string, object>
                     {
-                        ["type"] = handled ? "generic" : "unity.LogException",
-                        ["handled"] = handled,
-                        ["source"] = "unity",
-                        ["synthetic"] = false
-                    },
-                    ["stacktrace"] = new Dictionary<string, object>
-                    {
-                        ["frames"] = frames,
-                        ["type"] = "raw"
+                        ["type"] = ex.GetType().FullName ?? ex.GetType().Name,
+                        ["value"] = ex.Message,
+                        ["mechanism"] = new Dictionary<string, object>
+                        {
+                            ["type"] = handled ? "generic" : "unity.LogException",
+                            ["handled"] = handled,
+                            ["source"] = "unity",
+                            ["synthetic"] = false,
+                        },
+                        ["stacktrace"] = new Dictionary<string, object>
+                        {
+                            ["frames"] = frames,
+                            ["type"] = "raw",
+                        },
                     }
-                });
+                );
 
                 if (depth >= MaxExceptionDepth)
                 {
@@ -171,9 +180,11 @@ namespace PostHog.ErrorTracking
             {
                 var potentialType = message.Substring(0, colonIndex).Trim();
                 // Check if it looks like an exception type
-                if (potentialType.EndsWith("Exception") ||
-                    potentialType.EndsWith("Error") ||
-                    potentialType.Contains("."))
+                if (
+                    potentialType.EndsWith("Exception")
+                    || potentialType.EndsWith("Error")
+                    || potentialType.Contains(".")
+                )
                 {
                     return potentialType;
                 }
@@ -198,9 +209,11 @@ namespace PostHog.ErrorTracking
             {
                 var potentialType = message.Substring(0, colonIndex).Trim();
                 // Check if the first part looks like an exception type
-                if (potentialType.EndsWith("Exception") ||
-                    potentialType.EndsWith("Error") ||
-                    potentialType.Contains("."))
+                if (
+                    potentialType.EndsWith("Exception")
+                    || potentialType.EndsWith("Error")
+                    || potentialType.Contains(".")
+                )
                 {
                     return message.Substring(colonIndex + 1).Trim();
                 }
