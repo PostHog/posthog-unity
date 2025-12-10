@@ -108,6 +108,29 @@ namespace PostHog
         /// </example>
         public Func<string, Type, object> PayloadDeserializer { get; set; }
 
+        #region Exception Tracking
+
+        /// <summary>
+        /// Whether to automatically capture unhandled exceptions.
+        /// Defaults to true.
+        /// </summary>
+        public bool CaptureExceptions { get; set; } = true;
+
+        /// <summary>
+        /// Minimum time in milliseconds between capturing exceptions.
+        /// Set to 0 to disable debouncing.
+        /// Defaults to 1000ms (1 second).
+        /// </summary>
+        public int ExceptionDebounceIntervalMs { get; set; } = 1000;
+
+        /// <summary>
+        /// Whether to capture exceptions in the Unity Editor.
+        /// Defaults to true.
+        /// </summary>
+        public bool CaptureExceptionsInEditor { get; set; } = true;
+
+        #endregion
+
         /// <summary>
         /// Validates the configuration and throws if invalid.
         /// </summary>

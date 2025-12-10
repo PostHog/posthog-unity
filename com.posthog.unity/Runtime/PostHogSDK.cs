@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using PostHog.ErrorTracking;
 using UnityEngine;
 
 namespace PostHog
@@ -22,6 +23,7 @@ namespace PostHog
         SessionManager _sessionManager;
         LifecycleHandler _lifecycleHandler;
         FeatureFlagManager _featureFlagManager;
+        ExceptionManager _exceptionManager;
         Dictionary<string, object> _superProperties;
         bool _optedOut;
 
@@ -168,10 +170,33 @@ namespace PostHog
             {
                 _featureFlagManager.ReloadFeatureFlags(this);
             }
+
+            // Initialize exception tracking
+            InitializeExceptionTracking();
+        }
+
+        void InitializeExceptionTracking()
+        {
+            // Check if exceptions should be captured in editor
+            if (Application.isEditor && !_config.CaptureExceptionsInEditor)
+            {
+                PostHogLogger.Debug("Exception capture disabled in editor");
+                return;
+            }
+
+            _exceptionManager = new ExceptionManager(
+                _config,
+                CaptureInternal,
+                () => _identityManager.DistinctId
+            );
+            _exceptionManager.Start();
         }
 
         void ShutdownInternal()
         {
+            // Stop exception tracking
+            _exceptionManager?.Stop();
+
             _eventQueue?.Stop();
             _eventQueue?.Flush();
 
@@ -221,6 +246,36 @@ namespace PostHog
             props["$screen_name"] = screenName;
 
             _instance.CaptureInternal("$screen", props);
+        }
+
+        /// <summary>
+        /// Manually captures an exception.
+        /// Use this for handled exceptions that you want to report to PostHog.
+        /// </summary>
+        /// <param name="exception">The exception to capture</param>
+        /// <param name="properties">Optional additional properties</param>
+        public static void CaptureException(Exception exception, Dictionary<string, object> properties = null)
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance.CaptureExceptionInternal(exception, properties);
+        }
+
+        void CaptureExceptionInternal(Exception exception, Dictionary<string, object> properties)
+        {
+            if (_optedOut)
+            {
+                PostHogLogger.Debug("Opted out, skipping exception capture");
+                return;
+            }
+
+            if (exception == null)
+            {
+                PostHogLogger.Warning("CaptureException called with null exception");
+                return;
+            }
+
+            _exceptionManager?.CaptureException(exception, properties);
         }
 
         void CaptureInternal(string eventName, Dictionary<string, object> properties)
