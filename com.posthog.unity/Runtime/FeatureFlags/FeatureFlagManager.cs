@@ -497,11 +497,11 @@ namespace PostHog
             {
                 merged["$app_version"] = Application.version;
                 merged["$app_build"] = Application.buildGUID;
-                merged["$os_name"] = GetOSName();
+                merged["$os_name"] = PlatformInfo.GetOperatingSystem();
                 merged["$os_version"] = SystemInfo.operatingSystem;
-                merged["$device_type"] = GetDeviceType();
-                merged["$lib"] = "posthog-unity";
-                merged["$lib_version"] = "1.0.0"; // TODO: Read from package.json
+                merged["$device_type"] = PlatformInfo.GetDeviceType();
+                merged["$lib"] = SdkInfo.LibraryName;
+                merged["$lib_version"] = SdkInfo.Version;
             }
 
             // Override with custom properties
@@ -511,36 +511,6 @@ namespace PostHog
             }
 
             return merged.Count > 0 ? merged : null;
-        }
-
-        static string GetOSName()
-        {
-#if UNITY_IOS
-            return "iOS";
-#elif UNITY_ANDROID
-            return "Android";
-#elif UNITY_WEBGL
-            return "WebGL";
-#elif UNITY_STANDALONE_WIN
-            return "Windows";
-#elif UNITY_STANDALONE_OSX
-            return "macOS";
-#elif UNITY_STANDALONE_LINUX
-            return "Linux";
-#else
-            return Application.platform.ToString();
-#endif
-        }
-
-        static string GetDeviceType()
-        {
-#if UNITY_IOS || UNITY_ANDROID
-            return "Mobile";
-#elif UNITY_WEBGL
-            return "Web";
-#else
-            return "Desktop";
-#endif
         }
 
         #endregion
