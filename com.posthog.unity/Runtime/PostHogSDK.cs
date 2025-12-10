@@ -20,6 +20,7 @@ namespace PostHog
         IdentityManager _identityManager;
         SessionManager _sessionManager;
         LifecycleHandler _lifecycleHandler;
+        FeatureFlagManager _featureFlagManager;
         Dictionary<string, object> _superProperties;
         bool _optedOut;
 
@@ -123,6 +124,27 @@ namespace PostHog
             _sessionManager = new SessionManager(_storage);
             _eventQueue = new EventQueue(config, _storage, _networkClient);
 
+            // Initialize feature flag manager
+            _featureFlagManager = new FeatureFlagManager(
+                config,
+                _storage,
+                _networkClient,
+                () => _identityManager.DistinctId,
+                () => _identityManager.AnonymousId,
+                () => _identityManager.Groups,
+                CaptureInternal
+            );
+
+            // Wire up feature flag events
+            _featureFlagManager.OnFeatureFlagsLoaded += () =>
+            {
+                config.OnFeatureFlagsLoaded?.Invoke();
+                OnFeatureFlagsLoadedInternal?.Invoke();
+            };
+
+            // Subscribe to identity changes for automatic flag reload
+            _identityManager.OnIdentityChanged += OnIdentityChangedInternal;
+
             // Start the event queue
             _eventQueue.Start(this);
 
@@ -139,6 +161,15 @@ namespace PostHog
 
             // Load super properties
             LoadSuperProperties();
+
+            // Load cached feature flags immediately
+            _featureFlagManager.LoadFromCache();
+
+            // Preload fresh flags from server
+            if (config.PreloadFeatureFlags)
+            {
+                _featureFlagManager.ReloadFeatureFlags(this);
+            }
         }
 
         void ShutdownInternal()
@@ -543,6 +574,315 @@ namespace PostHog
                 if (!EnsureInitialized())
                     return true;
                 return _instance._optedOut;
+            }
+        }
+
+        #endregion
+
+        #region Feature Flags
+
+        /// <summary>
+        /// Internal event raised when feature flags are loaded.
+        /// </summary>
+        static event Action OnFeatureFlagsLoadedInternal;
+
+        /// <summary>
+        /// Event raised when feature flags are loaded (from cache or server).
+        /// </summary>
+        public static event Action OnFeatureFlagsLoaded
+        {
+            add => OnFeatureFlagsLoadedInternal += value;
+            remove => OnFeatureFlagsLoadedInternal -= value;
+        }
+
+        /// <summary>
+        /// Checks if a feature flag is enabled.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if flag not found</param>
+        /// <returns>True if flag is enabled or has a variant value</returns>
+        public static bool IsFeatureEnabled(string key, bool defaultValue = false)
+        {
+            if (!EnsureInitialized())
+                return defaultValue;
+            return _instance.IsFeatureEnabledInternal(key, defaultValue);
+        }
+
+        /// <summary>
+        /// Gets a feature flag value.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if flag not found</param>
+        /// <returns>The flag value (bool, string variant, or default)</returns>
+        public static object GetFeatureFlag(string key, object defaultValue = null)
+        {
+            if (!EnsureInitialized())
+                return defaultValue;
+            return _instance.GetFeatureFlagInternal(key, defaultValue);
+        }
+
+        /// <summary>
+        /// Gets a feature flag value with type conversion.
+        /// </summary>
+        /// <typeparam name="T">The expected type</typeparam>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if flag not found or wrong type</param>
+        /// <returns>The flag value or default</returns>
+        public static T GetFeatureFlag<T>(string key, T defaultValue = default)
+        {
+            if (!EnsureInitialized())
+                return defaultValue;
+            return _instance.GetFeatureFlagInternal(key, defaultValue);
+        }
+
+        /// <summary>
+        /// Gets the payload attached to a feature flag.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if payload not found</param>
+        /// <returns>The payload object or default</returns>
+        public static object GetFeatureFlagPayload(string key, object defaultValue = null)
+        {
+            if (!EnsureInitialized())
+                return defaultValue;
+            return _instance.GetFeatureFlagPayloadInternal(key, defaultValue);
+        }
+
+        /// <summary>
+        /// Gets the payload attached to a feature flag with type conversion.
+        /// </summary>
+        /// <typeparam name="T">The expected type</typeparam>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if payload not found or wrong type</param>
+        /// <returns>The payload or default</returns>
+        public static T GetFeatureFlagPayload<T>(string key, T defaultValue = default)
+        {
+            if (!EnsureInitialized())
+                return defaultValue;
+            return _instance.GetFeatureFlagPayloadInternal(key, defaultValue);
+        }
+
+        /// <summary>
+        /// Reloads feature flags from the server.
+        /// </summary>
+        public static void ReloadFeatureFlags()
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._featureFlagManager.ReloadFeatureFlags(_instance);
+        }
+
+        /// <summary>
+        /// Reloads feature flags from the server with a callback.
+        /// </summary>
+        /// <param name="onComplete">Callback when reload is complete</param>
+        public static void ReloadFeatureFlags(Action onComplete)
+        {
+            if (!EnsureInitialized())
+            {
+                onComplete?.Invoke();
+                return;
+            }
+            _instance._featureFlagManager.ReloadFeatureFlags(_instance, onComplete);
+        }
+
+        /// <summary>
+        /// Sets person properties to be sent with feature flag requests.
+        /// </summary>
+        /// <param name="properties">Properties to set</param>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after setting</param>
+        public static void SetPersonPropertiesForFlags(
+            Dictionary<string, object> properties,
+            bool reloadFeatureFlags = true
+        )
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._featureFlagManager.SetPersonPropertiesForFlags(
+                properties,
+                _instance._storage,
+                reloadFeatureFlags,
+                _instance
+            );
+        }
+
+        /// <summary>
+        /// Resets all person properties for feature flags.
+        /// </summary>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after resetting</param>
+        public static void ResetPersonPropertiesForFlags(bool reloadFeatureFlags = true)
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._featureFlagManager.ResetPersonPropertiesForFlags(
+                _instance._storage,
+                reloadFeatureFlags,
+                _instance
+            );
+        }
+
+        /// <summary>
+        /// Sets group properties to be sent with feature flag requests.
+        /// </summary>
+        /// <param name="groupType">The group type</param>
+        /// <param name="properties">Properties to set</param>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after setting</param>
+        public static void SetGroupPropertiesForFlags(
+            string groupType,
+            Dictionary<string, object> properties,
+            bool reloadFeatureFlags = true
+        )
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._featureFlagManager.SetGroupPropertiesForFlags(
+                groupType,
+                properties,
+                _instance._storage,
+                reloadFeatureFlags,
+                _instance
+            );
+        }
+
+        /// <summary>
+        /// Resets all group properties for feature flags.
+        /// </summary>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after resetting</param>
+        public static void ResetGroupPropertiesForFlags(bool reloadFeatureFlags = true)
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._featureFlagManager.ResetGroupPropertiesForFlags(
+                _instance._storage,
+                reloadFeatureFlags,
+                _instance
+            );
+        }
+
+        /// <summary>
+        /// Resets group properties for a specific group type.
+        /// </summary>
+        /// <param name="groupType">The group type to reset</param>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after resetting</param>
+        public static void ResetGroupPropertiesForFlags(
+            string groupType,
+            bool reloadFeatureFlags = true
+        )
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._featureFlagManager.ResetGroupPropertiesForFlags(
+                groupType,
+                _instance._storage,
+                reloadFeatureFlags,
+                _instance
+            );
+        }
+
+        bool IsFeatureEnabledInternal(string key, bool defaultValue)
+        {
+            var value = GetFeatureFlagInternal(key, null);
+
+            if (value == null)
+                return defaultValue;
+
+            if (value is bool b)
+                return b;
+
+            // String variant = enabled
+            if (value is string s)
+                return !string.IsNullOrEmpty(s);
+
+            return defaultValue;
+        }
+
+        object GetFeatureFlagInternal(string key, object defaultValue)
+        {
+            var value = _featureFlagManager.GetFlag(key);
+
+            if (value == null)
+                return defaultValue;
+
+            // Track flag access for experiments
+            if (_config.SendFeatureFlagEvent)
+            {
+                _featureFlagManager.TrackFlagCalled(key, value);
+            }
+
+            return value;
+        }
+
+        T GetFeatureFlagInternal<T>(string key, T defaultValue)
+        {
+            var value = GetFeatureFlagInternal(key, (object)null);
+
+            if (value == null)
+                return defaultValue;
+
+            // Try direct cast
+            if (value is T t)
+                return t;
+
+            // Try conversion
+            try
+            {
+                return (T)Convert.ChangeType(value, typeof(T));
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        object GetFeatureFlagPayloadInternal(string key, object defaultValue)
+        {
+            var payload = _featureFlagManager.GetPayload(key);
+
+            if (payload == null)
+                return defaultValue;
+
+            // If payload is a JSON string, try to parse it
+            if (payload is string jsonStr && !string.IsNullOrEmpty(jsonStr))
+            {
+                try
+                {
+                    return JsonSerializer.DeserializeDictionary(jsonStr) ?? payload;
+                }
+                catch
+                {
+                    return payload;
+                }
+            }
+
+            return payload;
+        }
+
+        T GetFeatureFlagPayloadInternal<T>(string key, T defaultValue)
+        {
+            var payload = GetFeatureFlagPayloadInternal(key, (object)null);
+
+            if (payload == null)
+                return defaultValue;
+
+            if (payload is T t)
+                return t;
+
+            try
+            {
+                return (T)Convert.ChangeType(payload, typeof(T));
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        void OnIdentityChangedInternal()
+        {
+            // Reload flags when identity changes
+            if (_config.PreloadFeatureFlags)
+            {
+                _featureFlagManager.ReloadFeatureFlags(this);
             }
         }
 

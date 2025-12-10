@@ -71,6 +71,33 @@ namespace PostHog
         public bool ReuseAnonymousId { get; set; } = false;
 
         /// <summary>
+        /// Whether to preload feature flags on SDK initialization.
+        /// When true, flags are fetched asynchronously after setup.
+        /// Cached flags are available immediately.
+        /// Defaults to true.
+        /// </summary>
+        public bool PreloadFeatureFlags { get; set; } = true;
+
+        /// <summary>
+        /// Whether to send $feature_flag_called events when flags are accessed.
+        /// Required for experiments and A/B test tracking.
+        /// Defaults to true.
+        /// </summary>
+        public bool SendFeatureFlagEvent { get; set; } = true;
+
+        /// <summary>
+        /// Whether to include default device/app properties in flag requests.
+        /// Includes $app_version, $os_name, $device_type, etc.
+        /// Defaults to true.
+        /// </summary>
+        public bool SendDefaultPersonPropertiesForFlags { get; set; } = true;
+
+        /// <summary>
+        /// Callback invoked when feature flags are loaded (from cache or server).
+        /// </summary>
+        public Action OnFeatureFlagsLoaded { get; set; }
+
+        /// <summary>
         /// Validates the configuration and throws if invalid.
         /// </summary>
         public void Validate()

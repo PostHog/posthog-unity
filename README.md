@@ -122,6 +122,66 @@ PostHog.Register("platform", "iOS");
 PostHog.Unregister("app_version");
 ```
 
+## Feature Flags
+
+Check feature flags and run experiments:
+
+```csharp
+// Check if a flag is enabled
+if (PostHog.IsFeatureEnabled("new-checkout-flow"))
+{
+    // Show new checkout
+}
+
+// Get a multivariate flag value
+string variant = PostHog.GetFeatureFlag<string>("experiment-variant", "control");
+
+// Get a flag payload (attached JSON data)
+var config = PostHog.GetFeatureFlagPayload("checkout-config");
+
+// Manually reload flags
+PostHog.ReloadFeatureFlags(() => Debug.Log("Flags reloaded!"));
+
+// Listen for flag updates
+PostHog.OnFeatureFlagsLoaded += () => UpdateUI();
+```
+
+### Flag Targeting Properties
+
+Set properties used for flag evaluation:
+
+```csharp
+// Set person properties for targeting
+PostHog.SetPersonPropertiesForFlags(new Dictionary<string, object>
+{
+    { "plan", "premium" },
+    { "beta_user", true }
+});
+
+// Set group properties for targeting
+PostHog.SetGroupPropertiesForFlags("company", new Dictionary<string, object>
+{
+    { "size", "enterprise" }
+});
+
+// Reset properties
+PostHog.ResetPersonPropertiesForFlags();
+PostHog.ResetGroupPropertiesForFlags();
+```
+
+### Feature Flag Configuration
+
+```csharp
+PostHog.Setup(new PostHogConfig
+{
+    ApiKey = "phc_...",
+    PreloadFeatureFlags = true,           // Fetch flags on init (default: true)
+    SendFeatureFlagEvent = true,          // Track flag usage (default: true)
+    SendDefaultPersonPropertiesForFlags = true, // Include device info (default: true)
+    OnFeatureFlagsLoaded = () => Debug.Log("Flags ready!")
+});
+```
+
 ## Opt-Out / Opt-In
 
 For GDPR compliance:

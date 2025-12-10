@@ -102,5 +102,123 @@ namespace PostHog
         /// Opts back in to tracking.
         /// </summary>
         public static void OptIn() => PostHogSDK.OptIn();
+
+        #region Feature Flags
+
+        /// <summary>
+        /// Event raised when feature flags are loaded (from cache or server).
+        /// </summary>
+        public static event Action OnFeatureFlagsLoaded
+        {
+            add => PostHogSDK.OnFeatureFlagsLoaded += value;
+            remove => PostHogSDK.OnFeatureFlagsLoaded -= value;
+        }
+
+        /// <summary>
+        /// Checks if a feature flag is enabled.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if flag not found</param>
+        /// <returns>True if flag is enabled or has a variant value</returns>
+        public static bool IsFeatureEnabled(string key, bool defaultValue = false) =>
+            PostHogSDK.IsFeatureEnabled(key, defaultValue);
+
+        /// <summary>
+        /// Gets a feature flag value.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if flag not found</param>
+        /// <returns>The flag value (bool, string variant, or default)</returns>
+        public static object GetFeatureFlag(string key, object defaultValue = null) =>
+            PostHogSDK.GetFeatureFlag(key, defaultValue);
+
+        /// <summary>
+        /// Gets a feature flag value with type conversion.
+        /// </summary>
+        /// <typeparam name="T">The expected type</typeparam>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if flag not found or wrong type</param>
+        /// <returns>The flag value or default</returns>
+        public static T GetFeatureFlag<T>(string key, T defaultValue = default) =>
+            PostHogSDK.GetFeatureFlag(key, defaultValue);
+
+        /// <summary>
+        /// Gets the payload attached to a feature flag.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if payload not found</param>
+        /// <returns>The payload object or default</returns>
+        public static object GetFeatureFlagPayload(string key, object defaultValue = null) =>
+            PostHogSDK.GetFeatureFlagPayload(key, defaultValue);
+
+        /// <summary>
+        /// Gets the payload attached to a feature flag with type conversion.
+        /// </summary>
+        /// <typeparam name="T">The expected type</typeparam>
+        /// <param name="key">The flag key</param>
+        /// <param name="defaultValue">Default value if payload not found or wrong type</param>
+        /// <returns>The payload or default</returns>
+        public static T GetFeatureFlagPayload<T>(string key, T defaultValue = default) =>
+            PostHogSDK.GetFeatureFlagPayload(key, defaultValue);
+
+        /// <summary>
+        /// Reloads feature flags from the server.
+        /// </summary>
+        public static void ReloadFeatureFlags() => PostHogSDK.ReloadFeatureFlags();
+
+        /// <summary>
+        /// Reloads feature flags from the server with a callback.
+        /// </summary>
+        /// <param name="onComplete">Callback when reload is complete</param>
+        public static void ReloadFeatureFlags(Action onComplete) =>
+            PostHogSDK.ReloadFeatureFlags(onComplete);
+
+        /// <summary>
+        /// Sets person properties to be sent with feature flag requests.
+        /// </summary>
+        /// <param name="properties">Properties to set</param>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after setting</param>
+        public static void SetPersonPropertiesForFlags(
+            Dictionary<string, object> properties,
+            bool reloadFeatureFlags = true
+        ) => PostHogSDK.SetPersonPropertiesForFlags(properties, reloadFeatureFlags);
+
+        /// <summary>
+        /// Resets all person properties for feature flags.
+        /// </summary>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after resetting</param>
+        public static void ResetPersonPropertiesForFlags(bool reloadFeatureFlags = true) =>
+            PostHogSDK.ResetPersonPropertiesForFlags(reloadFeatureFlags);
+
+        /// <summary>
+        /// Sets group properties to be sent with feature flag requests.
+        /// </summary>
+        /// <param name="groupType">The group type</param>
+        /// <param name="properties">Properties to set</param>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after setting</param>
+        public static void SetGroupPropertiesForFlags(
+            string groupType,
+            Dictionary<string, object> properties,
+            bool reloadFeatureFlags = true
+        ) => PostHogSDK.SetGroupPropertiesForFlags(groupType, properties, reloadFeatureFlags);
+
+        /// <summary>
+        /// Resets all group properties for feature flags.
+        /// </summary>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after resetting</param>
+        public static void ResetGroupPropertiesForFlags(bool reloadFeatureFlags = true) =>
+            PostHogSDK.ResetGroupPropertiesForFlags(reloadFeatureFlags);
+
+        /// <summary>
+        /// Resets group properties for a specific group type.
+        /// </summary>
+        /// <param name="groupType">The group type to reset</param>
+        /// <param name="reloadFeatureFlags">Whether to reload flags after resetting</param>
+        public static void ResetGroupPropertiesForFlags(
+            string groupType,
+            bool reloadFeatureFlags = true
+        ) => PostHogSDK.ResetGroupPropertiesForFlags(groupType, reloadFeatureFlags);
+
+        #endregion
     }
 }
