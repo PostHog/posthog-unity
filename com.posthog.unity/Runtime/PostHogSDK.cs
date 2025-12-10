@@ -362,6 +362,12 @@ namespace PostHog
             Dictionary<string, object> userPropertiesSetOnce
         )
         {
+            // Cache person properties for feature flag evaluation BEFORE identity change
+            // This ensures when the identity change triggers a flag reload, the properties
+            // are already available. This avoids ingestion lag where the $identify event
+            // hasn't been processed yet. Matches iOS/Android SDK behavior.
+            SetPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce);
+
             var previousAnonymousId = _identityManager.Identify(distinctId);
 
             // Build $identify event properties
@@ -383,13 +389,68 @@ namespace PostHog
             }
 
             CaptureInternal("$identify", properties);
+
             PostHogLogger.Debug($"Identified as: {distinctId}");
+        }
+
+        void SetPersonPropertiesForFlagsIfNeeded(
+            Dictionary<string, object> userProperties,
+            Dictionary<string, object> userPropertiesSetOnce
+        )
+        {
+            var hasProperties =
+                (userProperties != null && userProperties.Count > 0)
+                || (userPropertiesSetOnce != null && userPropertiesSetOnce.Count > 0);
+
+            if (!hasProperties)
+                return;
+
+            var mergedProperties = new Dictionary<string, object>();
+
+            // Add $set_once properties first (lower priority)
+            if (userPropertiesSetOnce != null)
+            {
+                foreach (var kvp in userPropertiesSetOnce)
+                {
+                    mergedProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // Add $set properties (higher priority, overrides $set_once)
+            if (userProperties != null)
+            {
+                foreach (var kvp in userProperties)
+                {
+                    mergedProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // Cache properties for flags (don't reload here - identity change handler will do it)
+            _featureFlagManager.SetPersonPropertiesForFlags(
+                mergedProperties,
+                _storage,
+                reloadFeatureFlags: false,
+                this
+            );
         }
 
         void ResetInternal()
         {
             _identityManager.Reset();
             _sessionManager.StartNewSession();
+
+            // Clear cached person and group properties for flags (matches iOS/Android behavior)
+            _featureFlagManager.ResetPersonPropertiesForFlags(
+                _storage,
+                reloadFeatureFlags: false,
+                this
+            );
+            _featureFlagManager.ResetGroupPropertiesForFlags(
+                _storage,
+                reloadFeatureFlags: false,
+                this
+            );
+
             PostHogLogger.Debug("Identity reset");
         }
 
