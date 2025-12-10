@@ -663,6 +663,24 @@ namespace PostHog
         }
 
         /// <summary>
+        /// Gets the payload attached to a feature flag as a PostHogJson object.
+        /// Provides easy access to nested JSON values with type-safe accessors.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <returns>The payload as PostHogJson, or PostHogJson.Null if not found</returns>
+        /// <example>
+        /// var payload = PostHog.GetFeatureFlagPayloadJson("checkout-config");
+        /// var theme = payload["theme"].GetString("light");
+        /// var maxItems = payload["settings"]["maxItems"].GetInt(10);
+        /// </example>
+        public static PostHogJson GetFeatureFlagPayloadJson(string key)
+        {
+            if (!EnsureInitialized())
+                return PostHogJson.Null;
+            return _instance.GetFeatureFlagPayloadJsonInternal(key);
+        }
+
+        /// <summary>
         /// Reloads feature flags from the server.
         /// </summary>
         public static void ReloadFeatureFlags()
@@ -859,22 +877,89 @@ namespace PostHog
 
         T GetFeatureFlagPayloadInternal<T>(string key, T defaultValue)
         {
-            var payload = GetFeatureFlagPayloadInternal(key, (object)null);
+            var rawPayload = _featureFlagManager.GetPayload(key);
 
-            if (payload == null)
+            if (rawPayload == null)
                 return defaultValue;
 
-            if (payload is T t)
+            // If already the right type, return directly
+            if (rawPayload is T t)
                 return t;
 
+            // For complex types (classes), try JSON deserialization
+            var targetType = typeof(T);
+            if (targetType.IsClass && targetType != typeof(string))
+            {
+                string jsonStr = GetPayloadAsJsonString(rawPayload);
+                if (!string.IsNullOrEmpty(jsonStr))
+                {
+                    try
+                    {
+                        // Use custom deserializer if provided
+                        if (_config.PayloadDeserializer != null)
+                        {
+                            var result = _config.PayloadDeserializer(jsonStr, targetType);
+                            if (result is T deserialized)
+                                return deserialized;
+                        }
+                        else
+                        {
+                            // Fall back to Unity's JsonUtility
+                            return JsonUtility.FromJson<T>(jsonStr);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        PostHogLogger.Debug(
+                            $"Failed to deserialize payload to {targetType.Name}: {ex.Message}"
+                        );
+                    }
+                }
+            }
+
+            // Try simple type conversion for primitives
             try
             {
-                return (T)Convert.ChangeType(payload, typeof(T));
+                return (T)Convert.ChangeType(rawPayload, targetType);
             }
             catch
             {
                 return defaultValue;
             }
+        }
+
+        string GetPayloadAsJsonString(object payload)
+        {
+            if (payload == null)
+                return null;
+
+            // If it's already a string, assume it's JSON
+            if (payload is string str)
+                return str;
+
+            // If it's a dictionary or other object, serialize it
+            if (payload is Dictionary<string, object> || payload is List<object>)
+            {
+                return JsonSerializer.Serialize(payload);
+            }
+
+            return null;
+        }
+
+        PostHogJson GetFeatureFlagPayloadJsonInternal(string key)
+        {
+            var payload = _featureFlagManager.GetPayload(key);
+
+            if (payload == null)
+                return PostHogJson.Null;
+
+            // If payload is a JSON string, parse it first
+            if (payload is string jsonStr && !string.IsNullOrEmpty(jsonStr))
+            {
+                return PostHogJson.Parse(jsonStr);
+            }
+
+            return new PostHogJson(payload);
         }
 
         void OnIdentityChangedInternal()

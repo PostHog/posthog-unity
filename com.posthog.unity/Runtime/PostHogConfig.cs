@@ -98,6 +98,17 @@ namespace PostHog
         public Action OnFeatureFlagsLoaded { get; set; }
 
         /// <summary>
+        /// Custom JSON deserializer for feature flag payloads.
+        /// If not set, Unity's JsonUtility is used (which requires [Serializable] and public fields).
+        /// Set this to use a library like Newtonsoft.Json for better compatibility.
+        /// </summary>
+        /// <example>
+        /// // Using Newtonsoft.Json
+        /// config.PayloadDeserializer = (json, type) => JsonConvert.DeserializeObject(json, type);
+        /// </example>
+        public Func<string, Type, object> PayloadDeserializer { get; set; }
+
+        /// <summary>
         /// Validates the configuration and throws if invalid.
         /// </summary>
         public void Validate()
