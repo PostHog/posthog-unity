@@ -237,8 +237,10 @@ namespace PostHog
                 return;
             }
 
-            // Build event properties
-            var eventProps = new Dictionary<string, object>();
+            // Build event properties with pre-allocated capacity to reduce allocations
+            // SDK adds ~14 properties, plus super properties, provided properties, session_id, and $groups
+            var estimatedSize = _superProperties.Count + (properties?.Count ?? 0) + 16;
+            var eventProps = new Dictionary<string, object>(estimatedSize);
 
             // Add super properties
             foreach (var kvp in _superProperties)

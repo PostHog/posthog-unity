@@ -35,8 +35,15 @@ namespace PostHog
         /// <summary>
         /// Gets all event IDs currently in storage, ordered by creation time.
         /// </summary>
-        /// <returns>List of event IDs</returns>
-        List<string> GetEventIds();
+        /// <returns>Read-only list of event IDs</returns>
+        IReadOnlyList<string> GetEventIds();
+
+        /// <summary>
+        /// Gets the count of events currently in storage.
+        /// More efficient than GetEventIds().Count when only the count is needed.
+        /// </summary>
+        /// <returns>Number of events in storage</returns>
+        int GetEventCount();
 
         /// <summary>
         /// Clears all events from storage.
