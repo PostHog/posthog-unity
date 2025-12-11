@@ -20,7 +20,7 @@ class FeatureFlagManager
     readonly Func<Dictionary<string, string>> _getGroups;
     readonly Action<string, Dictionary<string, object>> _captureEvent;
 
-    readonly object _loadingLock = new object();
+    readonly object _loadingLock = new();
     bool _isLoading;
     List<Action> _pendingCallbacks;
 

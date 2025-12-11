@@ -16,12 +16,11 @@ public class FileStorageProvider : IStorageProvider
 {
     string _queuePath;
     string _statePath;
-    readonly object _lock = new object();
+    readonly object _lock = new();
     List<string> _eventIds;
 
     // Track pending writes so we can wait for them on shutdown
-    readonly ConcurrentDictionary<string, Task> _pendingWrites =
-        new ConcurrentDictionary<string, Task>();
+    readonly ConcurrentDictionary<string, Task> _pendingWrites = new();
 
     public void Initialize(string basePath)
     {

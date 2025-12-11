@@ -38,6 +38,26 @@ csharp_prefer_braces = true:suggestion
 # Null checking
 csharp_style_throw_expression = true:suggestion
 csharp_style_conditional_delegate_call = true:suggestion
+csharp_style_coalesce_expression = true:warning
+csharp_style_null_propagation = true:warning
+csharp_style_prefer_null_check_over_type_check = true:warning
+
+# Use target-typed new() - e.g., List<string> list = new();
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+
+# Pattern matching preferences
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_prefer_not_pattern = true:suggestion
+csharp_style_prefer_extended_property_pattern = true:suggestion
+
+# Simplify code
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_range_operator = true:suggestion
+csharp_style_prefer_index_operator = true:suggestion
+csharp_prefer_simple_default_expression = true:warning
+csharp_prefer_simple_using_statement = true:warning
 
 # Modifier ordering
 csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async:suggestion

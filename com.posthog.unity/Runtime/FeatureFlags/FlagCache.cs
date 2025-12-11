@@ -11,7 +11,7 @@ class FlagCache
     const string FeatureFlagsStateKey = "feature_flags";
 
     readonly IStorageProvider _storage;
-    readonly object _lock = new object();
+    readonly object _lock = new();
 
     Dictionary<string, object> _featureFlags;
     Dictionary<string, object> _featureFlagPayloads;

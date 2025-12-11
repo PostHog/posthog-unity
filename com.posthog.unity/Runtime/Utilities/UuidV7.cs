@@ -9,10 +9,10 @@ namespace PostHog;
 /// </summary>
 public static class UuidV7
 {
-    static readonly object Lock = new object();
+    static readonly object Lock = new();
     static long _lastTimestamp;
     static int _counter;
-    static readonly Random Random = new Random();
+    static readonly Random Random = new();
 
     /// <summary>
     /// Generates a new UUID v7 string.

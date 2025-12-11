@@ -18,7 +18,7 @@ namespace PostHog;
 public class PostHogSDK : MonoBehaviour
 {
     static PostHogSDK _instance;
-    static readonly object Lock = new object();
+    static readonly object Lock = new();
     static bool _isInitialized;
 
     PostHogConfig _config;

@@ -13,7 +13,7 @@ class IdentityManager
 
     readonly PostHogConfig _config;
     readonly IStorageProvider _storage;
-    readonly object _lock = new object();
+    readonly object _lock = new();
 
     string _distinctId;
     string _anonymousId;

@@ -16,7 +16,7 @@ public class PlayerPrefsStorageProvider : IStorageProvider
     const string StatePrefix = "posthog_state_";
     const int MaxEventSize = 50000; // ~50KB per event max
 
-    readonly object _lock = new object();
+    readonly object _lock = new();
     List<string> _eventIds;
 
     public void Initialize(string basePath)
