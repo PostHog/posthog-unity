@@ -15,6 +15,7 @@ set_source_and_root_dir
 
 PACKAGE_JSON="com.posthog.unity/package.json"
 VERSION_FILE="com.posthog.unity/Runtime/Utilities/SdkInfo.Generated.cs"
+CHANGELOG_FILE="CHANGELOG.md"
 REPO="PostHog/posthog-unity"
 
 # Check dependencies
@@ -141,9 +142,28 @@ mv "$PACKAGE_JSON.tmp" "$PACKAGE_JSON"
 echo "Generating SdkInfo.Generated.cs..."
 bin/generate-version
 
+# Update CHANGELOG.md
+echo "Updating $CHANGELOG_FILE..."
+if [[ -f "$CHANGELOG_FILE" ]]; then
+    # Get today's date in YYYY-MM-DD format
+    release_date=$(date +%Y-%m-%d)
+
+    # Replace "## Next" with the versioned section
+    if grep -q "^## Next" "$CHANGELOG_FILE"; then
+        sed -i.bak "s/^## Next$/## [$new_version] - $release_date/" "$CHANGELOG_FILE"
+        rm -f "$CHANGELOG_FILE.bak"
+        echo "  Updated '## Next' to '## [$new_version] - $release_date'"
+    else
+        echo "  Warning: No '## Next' section found in $CHANGELOG_FILE"
+        echo "  You may need to manually update the changelog."
+    fi
+else
+    echo "  Warning: $CHANGELOG_FILE not found, skipping changelog update"
+fi
+
 # Commit
 echo "Committing..."
-git add "$PACKAGE_JSON" "$VERSION_FILE"
+git add "$PACKAGE_JSON" "$VERSION_FILE" "$CHANGELOG_FILE"
 git commit -m "Bump version to $new_version"
 
 # Push and create PR
