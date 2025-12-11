@@ -20,7 +20,7 @@ dotnet_style_require_accessibility_modifiers = omit_if_default:warning
 
 # Namespace preferences - file-scoped namespaces like posthog-dotnet
 # Note: Unity 2021.3 uses C# 9.0 which supports file-scoped namespaces
-csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_style_namespace_declarations = file_scoped:warning
 
 # var preferences - match posthog-dotnet style
 csharp_style_var_for_built_in_types = false:suggestion

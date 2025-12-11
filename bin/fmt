@@ -48,6 +48,25 @@ fi
 # Add .NET tools to PATH
 export PATH="$PATH:$HOME/.dotnet/tools"
 
+# Step 1: Run dotnet format for code style fixes (e.g., file-scoped namespaces)
+# This uses the formatting-only project that references all Unity package source files
+FORMAT_PROJECT="./PostHog.Unity.Format.csproj"
+
+echo "Running dotnet format style on $FORMAT_PROJECT..."
+
+if $check; then
+    if ! dotnet format style "$FORMAT_PROJECT" --severity warn --verify-no-changes --verbosity quiet; then
+        echo "Code style check failed. Run 'bin/fmt' to fix."
+        success=false
+    fi
+else
+    if ! dotnet format style "$FORMAT_PROJECT" --severity warn --verbosity quiet; then
+        echo "dotnet format style failed!" 1>&2
+        success=false
+    fi
+fi
+
+# Step 2: Run CSharpier for whitespace formatting
 echo "Running CSharpier on $PACKAGE_DIR and $TESTS_DIR..."
 
 if $check; then
