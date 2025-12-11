@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -67,19 +68,16 @@ namespace PostHog
         public IEnumerator FetchFeatureFlags(
             string distinctId,
             string anonymousId,
-            System.Collections.Generic.Dictionary<string, string> groups,
-            System.Collections.Generic.Dictionary<string, object> personProperties,
-            System.Collections.Generic.Dictionary<
-                string,
-                System.Collections.Generic.Dictionary<string, object>
-            > groupProperties,
+            Dictionary<string, string> groups,
+            IReadOnlyDictionary<string, object> personProperties,
+            Dictionary<string, Dictionary<string, object>> groupProperties,
             Action<string, int> onComplete
         )
         {
             var url = GetFlagsUrl();
 
             // Build request body
-            var body = new System.Collections.Generic.Dictionary<string, object>
+            var body = new Dictionary<string, object>
             {
                 ["api_key"] = _config.ApiKey,
                 ["distinct_id"] = distinctId,

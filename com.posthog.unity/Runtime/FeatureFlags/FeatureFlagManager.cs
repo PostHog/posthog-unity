@@ -488,7 +488,7 @@ namespace PostHog
 
         #region Helper Methods
 
-        Dictionary<string, object> GetMergedPersonProperties()
+        IReadOnlyDictionary<string, object> GetMergedPersonProperties()
         {
             bool hasCustomProperties = _personPropertiesForFlags.Count > 0;
             bool hasDefaultProperties = _config.SendDefaultPersonPropertiesForFlags;
