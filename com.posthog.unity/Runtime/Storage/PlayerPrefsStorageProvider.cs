@@ -188,7 +188,9 @@ namespace PostHog
             {
                 try
                 {
-                    foreach (var id in _eventIds.ToList())
+                    // Create a copy to iterate since we're modifying the collection
+                    var eventIdsCopy = new List<string>(_eventIds);
+                    foreach (var id in eventIdsCopy)
                     {
                         PlayerPrefs.DeleteKey(EventPrefix + id);
                     }

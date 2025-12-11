@@ -202,7 +202,9 @@ namespace PostHog
             {
                 try
                 {
-                    foreach (var id in _eventIds.ToList())
+                    // Create a copy to iterate since we're modifying the collection
+                    var eventIdsCopy = new List<string>(_eventIds);
+                    foreach (var id in eventIdsCopy)
                     {
                         TryDeleteFile(GetEventFilePath(id));
                     }
@@ -222,7 +224,10 @@ namespace PostHog
         /// </summary>
         public void FlushPendingWrites()
         {
-            var pendingTasks = _pendingWrites.Values.ToArray();
+            // Copy values to array without LINQ
+            var values = _pendingWrites.Values;
+            var pendingTasks = new Task[values.Count];
+            values.CopyTo(pendingTasks, 0);
             if (pendingTasks.Length > 0)
             {
                 PostHogLogger.Debug(

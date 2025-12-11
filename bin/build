@@ -127,7 +127,7 @@ build_with_dotnet() {
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Disable default compile items since we specify them explicitly -->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- Suppress framework compatibility warning for Unity stubs -->

@@ -170,7 +170,7 @@ namespace PostHog.Editor
         {
             serializedObject.Update();
 
-            DrawHeader();
+            DrawTitleHeader();
             EditorGUILayout.Space(10);
 
             DrawValidationWarnings();
@@ -196,7 +196,7 @@ namespace PostHog.Editor
             serializedObject.ApplyModifiedProperties();
         }
 
-        void DrawHeader()
+        void DrawTitleHeader()
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
