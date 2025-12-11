@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace PostHog.Editor
 {
@@ -94,6 +95,36 @@ namespace PostHog.Editor
             "Keep the same anonymous ID across Reset() calls."
         );
 
+        // Cached styles for connection test status (avoid allocations in OnInspectorGUI)
+        GUIStyle _successStyle;
+        GUIStyle _failStyle;
+
+        GUIStyle SuccessStyle =>
+            _successStyle ??= new GUIStyle(EditorStyles.miniLabel)
+            {
+                normal = { textColor = new Color(0.2f, 0.7f, 0.2f) },
+            };
+
+        GUIStyle FailStyle =>
+            _failStyle ??= new GUIStyle(EditorStyles.miniLabel)
+            {
+                normal = { textColor = new Color(0.9f, 0.3f, 0.3f) },
+            };
+
+        // Connection test state
+        enum ConnectionTestState
+        {
+            None,
+            Testing,
+            Success,
+            Failed,
+        }
+
+        ConnectionTestState _connectionTestState = ConnectionTestState.None;
+        string _connectionTestMessage;
+        UnityWebRequestAsyncOperation _connectionTestOperation;
+        UnityWebRequest _connectionTestRequest;
+
         SerializedProperty _apiKey;
         SerializedProperty _host;
         SerializedProperty _autoInitialize;
@@ -139,6 +170,7 @@ namespace PostHog.Editor
 
         void OnEnable()
         {
+            EditorApplication.update += PollConnectionTestResult;
             _apiKey = serializedObject.FindProperty("_apiKey");
             _host = serializedObject.FindProperty("_host");
             _autoInitialize = serializedObject.FindProperty("_autoInitialize");
@@ -164,6 +196,32 @@ namespace PostHog.Editor
             _captureExceptionsInEditor = serializedObject.FindProperty(
                 "_captureExceptionsInEditor"
             );
+        }
+
+        void OnDisable()
+        {
+            EditorApplication.update -= PollConnectionTestResult;
+            CleanupConnectionTest();
+        }
+
+        void CleanupConnectionTest()
+        {
+            if (_connectionTestRequest != null)
+            {
+                _connectionTestRequest.Dispose();
+                _connectionTestRequest = null;
+            }
+            _connectionTestOperation = null;
+        }
+
+        void ClearStaleConnectionTestResult()
+        {
+            // Clear previous results when API key or host changes, unless a test is in progress
+            if (_connectionTestState != ConnectionTestState.Testing)
+            {
+                _connectionTestState = ConnectionTestState.None;
+                _connectionTestMessage = null;
+            }
         }
 
         public override void OnInspectorGUI()
@@ -247,8 +305,13 @@ namespace PostHog.Editor
 
             using (new EditorGUI.IndentLevelScope())
             {
+                EditorGUI.BeginChangeCheck();
                 EditorGUILayout.PropertyField(_apiKey, ApiKeyContent);
                 EditorGUILayout.PropertyField(_host, HostContent);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    ClearStaleConnectionTestResult();
+                }
 
                 // Quick host selection buttons
                 EditorGUILayout.BeginHorizontal();
@@ -256,13 +319,133 @@ namespace PostHog.Editor
                 if (GUILayout.Button("US Cloud", EditorStyles.miniButtonLeft))
                 {
                     _host.stringValue = "https://us.i.posthog.com";
+                    ClearStaleConnectionTestResult();
                 }
                 if (GUILayout.Button("EU Cloud", EditorStyles.miniButtonRight))
                 {
                     _host.stringValue = "https://eu.i.posthog.com";
+                    ClearStaleConnectionTestResult();
                 }
                 EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.Space(5);
+                DrawConnectionTestButton();
             }
+        }
+
+        void DrawConnectionTestButton()
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PrefixLabel(" ");
+
+            bool hasApiKey = !string.IsNullOrWhiteSpace(_apiKey.stringValue);
+            bool hasHost = !string.IsNullOrWhiteSpace(_host.stringValue);
+            bool canTest =
+                hasApiKey && hasHost && _connectionTestState != ConnectionTestState.Testing;
+
+            using (new EditorGUI.DisabledScope(!canTest))
+            {
+                string buttonText =
+                    _connectionTestState == ConnectionTestState.Testing
+                        ? "Testing…"
+                        : "Test Connection";
+
+                if (GUILayout.Button(buttonText, GUILayout.Width(120)))
+                {
+                    StartConnectionTest();
+                }
+            }
+
+            // Show status indicator
+            switch (_connectionTestState)
+            {
+                case ConnectionTestState.Testing:
+                    EditorGUILayout.LabelField("Connecting…", EditorStyles.miniLabel);
+                    break;
+                case ConnectionTestState.Success:
+                    EditorGUILayout.LabelField("✓ " + _connectionTestMessage, SuccessStyle);
+                    break;
+                case ConnectionTestState.Failed:
+                    EditorGUILayout.LabelField("✗ " + _connectionTestMessage, FailStyle);
+                    break;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void StartConnectionTest()
+        {
+            CleanupConnectionTest();
+
+            _connectionTestState = ConnectionTestState.Testing;
+            _connectionTestMessage = null;
+
+            // Apply any pending changes so we test the current values
+            serializedObject.ApplyModifiedProperties();
+
+            try
+            {
+                _connectionTestRequest = NetworkClient.CreateFlagsRequest(
+                    _apiKey.stringValue,
+                    _host.stringValue,
+                    distinctId: "posthog-unity-connection-test"
+                );
+                _connectionTestOperation = _connectionTestRequest.SendWebRequest();
+            }
+            catch (System.Exception ex)
+            {
+                _connectionTestState = ConnectionTestState.Failed;
+                _connectionTestMessage = ex.Message;
+                CleanupConnectionTest();
+            }
+
+            Repaint();
+        }
+
+        /// <summary>
+        /// Polls for connection test completion. Called every editor frame via EditorApplication.update.
+        /// </summary>
+        void PollConnectionTestResult()
+        {
+            if (_connectionTestOperation == null || !_connectionTestOperation.isDone)
+            {
+                return;
+            }
+
+            var request = _connectionTestRequest;
+            if (request == null)
+            {
+                // Already cleaned up (e.g., exception during StartConnectionTest)
+                _connectionTestOperation = null;
+                return;
+            }
+
+            var statusCode = (int)request.responseCode;
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                _connectionTestState = ConnectionTestState.Success;
+                _connectionTestMessage = "Connected";
+            }
+            else if (statusCode == 401 || statusCode == 403)
+            {
+                _connectionTestState = ConnectionTestState.Failed;
+                _connectionTestMessage = "Invalid API key";
+            }
+            // Unity returns statusCode 0 for network-level errors (DNS failure, connection refused, timeout)
+            else if (statusCode == 0)
+            {
+                _connectionTestState = ConnectionTestState.Failed;
+                _connectionTestMessage = request.error ?? "Network error";
+            }
+            else
+            {
+                _connectionTestState = ConnectionTestState.Failed;
+                _connectionTestMessage = $"HTTP {statusCode}";
+            }
+
+            CleanupConnectionTest();
+            Repaint();
         }
 
         void DrawInitializationSection()

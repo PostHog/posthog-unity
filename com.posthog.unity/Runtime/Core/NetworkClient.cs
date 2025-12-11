@@ -74,46 +74,17 @@ namespace PostHog
             Action<string, int> onComplete
         )
         {
-            var url = GetFlagsUrl();
+            using var request = CreateFlagsRequest(
+                _config.ApiKey,
+                _config.Host,
+                distinctId,
+                anonymousId,
+                groups,
+                personProperties,
+                groupProperties
+            );
 
-            // Build request body
-            var body = new Dictionary<string, object>
-            {
-                ["api_key"] = _config.ApiKey,
-                ["distinct_id"] = distinctId,
-            };
-
-            if (!string.IsNullOrEmpty(anonymousId))
-            {
-                body["$anon_distinct_id"] = anonymousId;
-            }
-
-            if (groups != null && groups.Count > 0)
-            {
-                body["$groups"] = groups;
-            }
-
-            if (personProperties != null && personProperties.Count > 0)
-            {
-                body["person_properties"] = personProperties;
-            }
-
-            if (groupProperties != null && groupProperties.Count > 0)
-            {
-                body["group_properties"] = groupProperties;
-            }
-
-            var json = JsonSerializer.Serialize(body);
-
-            PostHogLogger.Debug($"Fetching feature flags from {url}");
-
-            using var request = new UnityWebRequest(url, "POST");
-            var bodyRaw = Encoding.UTF8.GetBytes(json);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json");
-            request.timeout = TimeoutSeconds;
+            PostHogLogger.Debug($"Fetching feature flags from {request.url}");
 
             yield return request.SendWebRequest();
 
@@ -139,10 +110,72 @@ namespace PostHog
             return $"{host}/batch";
         }
 
-        string GetFlagsUrl()
+        /// <summary>
+        /// Creates a web request to fetch feature flags from PostHog.
+        /// This static method can be used by Editor code for connection testing.
+        /// </summary>
+        /// <param name="apiKey">The API key</param>
+        /// <param name="host">The PostHog host URL</param>
+        /// <param name="distinctId">The user's distinct ID</param>
+        /// <param name="anonymousId">The user's anonymous ID (optional)</param>
+        /// <param name="groups">Group memberships (optional)</param>
+        /// <param name="personProperties">Person properties for flag evaluation (optional)</param>
+        /// <param name="groupProperties">Group properties for flag evaluation (optional)</param>
+        /// <returns>A configured UnityWebRequest ready to send</returns>
+        /// <remarks>
+        /// The caller is responsible for disposing the returned <see cref="UnityWebRequest"/> when done.
+        /// </remarks>
+        public static UnityWebRequest CreateFlagsRequest(
+            string apiKey,
+            string host,
+            string distinctId,
+            string anonymousId = null,
+            Dictionary<string, string> groups = null,
+            IReadOnlyDictionary<string, object> personProperties = null,
+            Dictionary<string, Dictionary<string, object>> groupProperties = null
+        )
         {
-            var host = _config.Host.TrimEnd('/');
-            return $"{host}/flags/?v={FeatureFlagsResponse.CurrentVersion}&config=true";
+            var normalizedHost = host.TrimEnd('/');
+            var url =
+                $"{normalizedHost}/flags/?v={FeatureFlagsResponse.CurrentVersion}&config=true";
+
+            var body = new Dictionary<string, object>
+            {
+                ["api_key"] = apiKey,
+                ["distinct_id"] = distinctId,
+            };
+
+            if (!string.IsNullOrEmpty(anonymousId))
+            {
+                body["$anon_distinct_id"] = anonymousId;
+            }
+
+            if (groups != null && groups.Count > 0)
+            {
+                body["$groups"] = groups;
+            }
+
+            if (personProperties != null && personProperties.Count > 0)
+            {
+                body["person_properties"] = personProperties;
+            }
+
+            if (groupProperties != null && groupProperties.Count > 0)
+            {
+                body["group_properties"] = groupProperties;
+            }
+
+            var json = JsonSerializer.Serialize(body);
+
+            var request = new UnityWebRequest(url, "POST");
+            var bodyRaw = Encoding.UTF8.GetBytes(json);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Accept", "application/json");
+            request.timeout = TimeoutSeconds;
+
+            return request;
         }
     }
 }
