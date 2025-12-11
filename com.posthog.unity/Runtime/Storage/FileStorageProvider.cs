@@ -2,8 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -53,13 +51,16 @@ namespace PostHog
                 {
                     if (Directory.Exists(_queuePath))
                     {
-                        var files = Directory
-                            .GetFiles(_queuePath, "*.json")
-                            .Select(Path.GetFileNameWithoutExtension)
-                            .OrderBy(f => f) // UUID v7 is time-sortable
-                            .ToList();
+                        // Avoid LINQ allocation - sort array in place
+                        var files = Directory.GetFiles(_queuePath, "*.json");
+                        Array.Sort(files); // UUID v7 filenames are time-sortable
 
-                        _eventIds = files;
+                        // Extract filenames without extension
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            _eventIds.Add(Path.GetFileNameWithoutExtension(files[i]));
+                        }
+
                         PostHogLogger.Debug($"Loaded {_eventIds.Count} events from disk");
                     }
                 }
@@ -201,7 +202,9 @@ namespace PostHog
             {
                 try
                 {
-                    foreach (var id in _eventIds.ToList())
+                    // Create a copy to iterate since we're modifying the collection
+                    var eventIdsCopy = new List<string>(_eventIds);
+                    foreach (var id in eventIdsCopy)
                     {
                         TryDeleteFile(GetEventFilePath(id));
                     }
@@ -221,7 +224,10 @@ namespace PostHog
         /// </summary>
         public void FlushPendingWrites()
         {
-            var pendingTasks = _pendingWrites.Values.ToArray();
+            // Copy values to array without LINQ
+            var values = _pendingWrites.Values;
+            var pendingTasks = new Task[values.Count];
+            values.CopyTo(pendingTasks, 0);
             if (pendingTasks.Length > 0)
             {
                 PostHogLogger.Debug(
