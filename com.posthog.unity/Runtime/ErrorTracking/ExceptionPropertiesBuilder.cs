@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace PostHog.ErrorTracking;
+namespace PostHogUnity.ErrorTracking;
 
 /// <summary>
 /// Builds properties for PostHog exception events following the PostHog error tracking format.

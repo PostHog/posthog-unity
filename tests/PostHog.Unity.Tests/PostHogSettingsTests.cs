@@ -1,7 +1,8 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using PostHogUnity;
 
-namespace PostHog.Unity.Tests;
+namespace PostHogUnity.Tests;
 
 /// <summary>
 /// Shared test helpers for PostHogSettings tests.

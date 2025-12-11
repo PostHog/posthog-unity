@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Static convenience wrapper for the PostHog SDK.

@@ -1,6 +1,6 @@
 {
     "name": "PostHog.Editor",
-    "rootNamespace": "PostHog.Editor",
+    "rootNamespace": "PostHogUnity.Editor",
     "references": [
         "PostHog"
     ],

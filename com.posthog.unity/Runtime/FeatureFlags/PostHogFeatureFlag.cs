@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Represents a feature flag value, which can be either a boolean or a string variant.

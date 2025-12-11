@@ -7,10 +7,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using PostHog.ErrorTracking;
+using PostHogUnity.ErrorTracking;
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Main entry point for the PostHog Unity SDK.

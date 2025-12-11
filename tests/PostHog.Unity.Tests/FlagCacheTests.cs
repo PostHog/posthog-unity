@@ -1,4 +1,6 @@
-namespace PostHog.Unity.Tests;
+using PostHogUnity;
+
+namespace PostHogUnity.Tests;
 
 public class FlagCacheTests
 {

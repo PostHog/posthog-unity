@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace PostHog.ErrorTracking;
+namespace PostHogUnity.ErrorTracking;
 
 /// <summary>
 /// Intercepts Unity's log handler to capture Debug.LogException calls with actual exception objects.

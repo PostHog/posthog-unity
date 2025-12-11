@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// PlayerPrefs-based storage provider for WebGL and platforms with limited file access.

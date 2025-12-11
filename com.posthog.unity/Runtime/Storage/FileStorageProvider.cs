@@ -5,7 +5,7 @@ using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// File-based storage provider for Standalone and Mobile platforms.

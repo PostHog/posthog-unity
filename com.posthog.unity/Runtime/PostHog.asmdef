@@ -1,6 +1,6 @@
 {
     "name": "PostHog",
-    "rootNamespace": "PostHog",
+    "rootNamespace": "PostHogUnity",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],

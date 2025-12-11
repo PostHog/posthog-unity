@@ -1,6 +1,6 @@
 using System;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Configuration options for the PostHog SDK.

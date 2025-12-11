@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Handles application lifecycle events and captures automatic events.

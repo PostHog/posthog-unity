@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Represents a single PostHog event.

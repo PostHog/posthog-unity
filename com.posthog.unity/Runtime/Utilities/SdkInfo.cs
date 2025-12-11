@@ -1,4 +1,4 @@
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// SDK information constants. Version is defined in SdkInfo.Generated.cs.

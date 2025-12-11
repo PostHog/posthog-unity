@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// ScriptableObject-based configuration for the PostHog SDK.

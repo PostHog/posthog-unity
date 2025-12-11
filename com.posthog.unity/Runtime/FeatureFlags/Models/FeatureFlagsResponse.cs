@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Response from the /flags API endpoint.

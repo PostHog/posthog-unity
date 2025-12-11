@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Provides platform detection utilities for PostHog SDK.

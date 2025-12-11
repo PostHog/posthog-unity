@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// A simple Least Recently Used (LRU) cache implementation.
