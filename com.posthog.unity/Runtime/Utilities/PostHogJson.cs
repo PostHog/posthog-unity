@@ -14,7 +14,7 @@ public class PostHogJson
     /// <summary>
     /// Represents a null/missing JSON value.
     /// </summary>
-    public static readonly PostHogJson Null = new PostHogJson(null);
+    public static readonly PostHogJson Null = new(null);
 
     /// <summary>
     /// Creates a new PostHogJson wrapper around a value.

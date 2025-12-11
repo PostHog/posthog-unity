@@ -13,7 +13,7 @@ class SessionManager
     static readonly TimeSpan MaxSessionLength = TimeSpan.FromHours(24);
 
     readonly IStorageProvider _storage;
-    readonly object _lock = new object();
+    readonly object _lock = new();
 
     string _sessionId;
     DateTime _sessionStartTime;

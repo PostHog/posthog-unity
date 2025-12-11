@@ -110,7 +110,7 @@ public class PostHogFeatureFlag
     /// <summary>
     /// A null/empty feature flag instance.
     /// </summary>
-    public static readonly PostHogFeatureFlag Null = new PostHogFeatureFlag(null, null, null);
+    public static readonly PostHogFeatureFlag Null = new(null, null, null);
 
     readonly FlagValue _value;
     readonly object _payload;

@@ -11,7 +11,7 @@ class LruCache<TKey, TValue>
     readonly int _capacity;
     readonly Dictionary<TKey, LinkedListNode<CacheItem>> _cache;
     readonly LinkedList<CacheItem> _lruList;
-    readonly object _lock = new object();
+    readonly object _lock = new();
 
     struct CacheItem
     {

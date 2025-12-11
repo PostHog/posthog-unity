@@ -13,7 +13,7 @@ class EventQueue
     readonly PostHogConfig _config;
     readonly IStorageProvider _storage;
     readonly NetworkClient _networkClient;
-    readonly object _lock = new object();
+    readonly object _lock = new();
 
     bool _isRunning;
     bool _isFlushing;
