@@ -345,6 +345,10 @@ Note: The SDK automatically flushes on app quit, so explicit shutdown is optiona
 - Ensure your PostHog instance allows CORS from your domain
 - WebGL has limited storage - consider reducing `MaxQueueSize`
 
+## Demo
+
+Check out [Hedgehog Game](https://github.com/PostHog/hedgehog-game), a sample Unity game that demonstrates how to integrate PostHog analytics.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

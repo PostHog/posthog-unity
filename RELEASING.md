@@ -31,7 +31,8 @@ The script will:
 1. Prompt for the bump type (patch, minor, or major)
 2. Create a `release/vX.Y.Z` branch from `main`
 3. Update `package.json` and generate `SdkInfo.Generated.cs`
-4. Push and create a PR
+4. Update `CHANGELOG.md` (replaces `## Next` with the version and date)
+5. Push and create a PR
 
 You can also specify the bump type directly:
 
@@ -57,6 +58,15 @@ When the PR is merged, GitHub Actions automatically:
 
 - Creates tag `vX.Y.Z`
 - Creates a GitHub Release with auto-generated notes
+
+## Maintaining the Changelog
+
+The `CHANGELOG.md` file uses a `## Next` section for unreleased changes. When making changes:
+
+1. Add your changes under `## Next` in the appropriate category (`### Added`, `### Changed`, `### Fixed`, etc.)
+2. When `bin/release` runs, it automatically replaces `## Next` with the version number and date
+
+If `## Next` is missing when you run `bin/release`, you'll get a warning and need to update the changelog manually.
 
 ## Version Guidelines
 
