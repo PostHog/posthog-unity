@@ -1,40 +1,39 @@
 using System;
 using System.Collections.Generic;
 
-namespace PostHog
+namespace PostHog;
+
+/// <summary>
+/// Payload for the /batch API endpoint.
+/// </summary>
+[Serializable]
+public class BatchPayload
 {
     /// <summary>
-    /// Payload for the /batch API endpoint.
+    /// The PostHog project API key.
     /// </summary>
-    [Serializable]
-    public class BatchPayload
+    public string ApiKey { get; set; }
+
+    /// <summary>
+    /// The batch of events to send.
+    /// </summary>
+    public List<PostHogEvent> Batch { get; set; }
+
+    /// <summary>
+    /// ISO 8601 timestamp when the batch was sent.
+    /// </summary>
+    public string SentAt { get; set; }
+
+    public BatchPayload()
     {
-        /// <summary>
-        /// The PostHog project API key.
-        /// </summary>
-        public string ApiKey { get; set; }
+        Batch = new List<PostHogEvent>();
+        SentAt = DateTime.UtcNow.ToString("o");
+    }
 
-        /// <summary>
-        /// The batch of events to send.
-        /// </summary>
-        public List<PostHogEvent> Batch { get; set; }
-
-        /// <summary>
-        /// ISO 8601 timestamp when the batch was sent.
-        /// </summary>
-        public string SentAt { get; set; }
-
-        public BatchPayload()
-        {
-            Batch = new List<PostHogEvent>();
-            SentAt = DateTime.UtcNow.ToString("o");
-        }
-
-        public BatchPayload(string apiKey, List<PostHogEvent> events)
-            : this()
-        {
-            ApiKey = apiKey;
-            Batch = events ?? new List<PostHogEvent>();
-        }
+    public BatchPayload(string apiKey, List<PostHogEvent> events)
+        : this()
+    {
+        ApiKey = apiKey;
+        Batch = events ?? new List<PostHogEvent>();
     }
 }

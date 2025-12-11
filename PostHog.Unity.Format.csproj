@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!--
+        This project exists solely for running 'dotnet format' to apply code style rules
+        from .editorconfig (like file-scoped namespaces). It is not meant to be built.
+    -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <Nullable>disable</Nullable>
+        <IsPackable>false</IsPackable>
+        <!-- Disable default compile items to avoid duplicates -->
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    </PropertyGroup>
+
+    <!-- Include all Unity package source files -->
+    <ItemGroup>
+        <Compile Include="com.posthog.unity/**/*.cs" />
+    </ItemGroup>
+
+    <!-- Unity stub assemblies for type resolution -->
+    <ItemGroup>
+        <PackageReference Include="Unity3D.SDK" Version="2021.1.14.1" />
+    </ItemGroup>
+
+    <PropertyGroup>
+        <!-- Suppress framework compatibility warning for Unity stubs -->
+        <NoWarn>NU1701</NoWarn>
+    </PropertyGroup>
+</Project>
