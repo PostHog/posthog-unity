@@ -69,19 +69,22 @@ public class PostHogExample : MonoBehaviour
     /// <summary>
     /// Call this when a user logs in.
     /// </summary>
-    public void OnUserLogin(string userId, string email)
+    public async void OnUserLogin(string userId, string email)
     {
-        // Identify the user
-        PostHog.PostHog.Identify(userId, new Dictionary<string, object> { { "email", email } });
+        // Identify the user (async to reload feature flags for the new identity)
+        await PostHog.PostHog.IdentifyAsync(
+            userId,
+            new Dictionary<string, object> { { "email", email } }
+        );
     }
 
     /// <summary>
     /// Call this when a user logs out.
     /// </summary>
-    public void OnUserLogout()
+    public async void OnUserLogout()
     {
-        // Reset to anonymous
-        PostHog.PostHog.Reset();
+        // Reset to anonymous (async to reload feature flags)
+        await PostHog.PostHog.ResetAsync();
     }
 
     /// <summary>
@@ -150,20 +153,27 @@ public class PostHogExample : MonoBehaviour
             Debug.Log("New checkout flow is enabled!");
         }
 
-        // Get a multivariate flag value
-        string variant = PostHog.PostHog.GetFeatureFlag<string>("experiment-variant", "control");
+        // Get a feature flag and check its variant value
+        var experimentFlag = PostHog.PostHog.GetFeatureFlag("experiment-variant");
+        string variant = experimentFlag.GetVariant("control");
         Debug.Log($"Experiment variant: {variant}");
+
+        // Get a feature flag with payload
+        var flag = PostHog.PostHog.GetFeatureFlag("checkout-config");
 
         // Option 1: Deserialize payload directly to a typed class
         // Requires [Serializable] class with public fields (see CheckoutConfig above)
-        var config = PostHog.PostHog.GetFeatureFlagPayload<CheckoutConfig>("checkout-config");
-        if (config != null)
+        if (flag.HasPayload)
         {
-            Debug.Log($"Config - Theme: {config.theme}, Max: {config.maxItems}");
+            var config = flag.GetPayload<CheckoutConfig>();
+            if (config != null)
+            {
+                Debug.Log($"Config - Theme: {config.theme}, Max: {config.maxItems}");
+            }
         }
 
         // Option 2: Use PostHogJson for dynamic/nested access
-        var payload = PostHog.PostHog.GetFeatureFlagPayloadJson("checkout-config");
+        var payload = flag.GetPayloadJson();
         if (!payload.IsNull)
         {
             // Access values with type-safe methods and defaults
