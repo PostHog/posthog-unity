@@ -1,57 +1,56 @@
 using UnityEngine;
 
-namespace PostHog
+namespace PostHog;
+
+/// <summary>
+/// Internal logger for the PostHog SDK.
+/// </summary>
+static class PostHogLogger
 {
-    /// <summary>
-    /// Internal logger for the PostHog SDK.
-    /// </summary>
-    static class PostHogLogger
+    static PostHogLogLevel _logLevel = PostHogLogLevel.Warning;
+
+    internal static void SetLogLevel(PostHogLogLevel level)
     {
-        static PostHogLogLevel _logLevel = PostHogLogLevel.Warning;
+        _logLevel = level;
+    }
 
-        internal static void SetLogLevel(PostHogLogLevel level)
+    internal static void Debug(string message)
+    {
+        if (_logLevel <= PostHogLogLevel.Debug)
         {
-            _logLevel = level;
+            UnityEngine.Debug.Log($"[PostHog] {message}");
         }
+    }
 
-        internal static void Debug(string message)
+    internal static void Info(string message)
+    {
+        if (_logLevel <= PostHogLogLevel.Info)
         {
-            if (_logLevel <= PostHogLogLevel.Debug)
-            {
-                UnityEngine.Debug.Log($"[PostHog] {message}");
-            }
+            UnityEngine.Debug.Log($"[PostHog] {message}");
         }
+    }
 
-        internal static void Info(string message)
+    internal static void Warning(string message)
+    {
+        if (_logLevel <= PostHogLogLevel.Warning)
         {
-            if (_logLevel <= PostHogLogLevel.Info)
-            {
-                UnityEngine.Debug.Log($"[PostHog] {message}");
-            }
+            UnityEngine.Debug.LogWarning($"[PostHog] {message}");
         }
+    }
 
-        internal static void Warning(string message)
+    internal static void Error(string message)
+    {
+        if (_logLevel <= PostHogLogLevel.Error)
         {
-            if (_logLevel <= PostHogLogLevel.Warning)
-            {
-                UnityEngine.Debug.LogWarning($"[PostHog] {message}");
-            }
+            UnityEngine.Debug.LogError($"[PostHog] {message}");
         }
+    }
 
-        internal static void Error(string message)
+    internal static void Error(string message, System.Exception ex)
+    {
+        if (_logLevel <= PostHogLogLevel.Error)
         {
-            if (_logLevel <= PostHogLogLevel.Error)
-            {
-                UnityEngine.Debug.LogError($"[PostHog] {message}");
-            }
-        }
-
-        internal static void Error(string message, System.Exception ex)
-        {
-            if (_logLevel <= PostHogLogLevel.Error)
-            {
-                UnityEngine.Debug.LogError($"[PostHog] {message}: {ex}");
-            }
+            UnityEngine.Debug.LogError($"[PostHog] {message}: {ex}");
         }
     }
 }
