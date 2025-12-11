@@ -216,12 +216,10 @@ namespace PostHog.Editor
 
         void ClearStaleConnectionTestResult()
         {
-            // Clear previous results when API key or host changes, unless a test is in progress
-            if (_connectionTestState != ConnectionTestState.Testing)
-            {
-                _connectionTestState = ConnectionTestState.None;
-                _connectionTestMessage = null;
-            }
+            // Cancel any in-flight request and clear results when API key or host changes
+            CleanupConnectionTest();
+            _connectionTestState = ConnectionTestState.None;
+            _connectionTestMessage = null;
         }
 
         public override void OnInspectorGUI()
@@ -415,8 +413,10 @@ namespace PostHog.Editor
             var request = _connectionTestRequest;
             if (request == null)
             {
-                // Already cleaned up (e.g., exception during StartConnectionTest)
+                // Request was disposed (e.g., user changed settings during test)
                 _connectionTestOperation = null;
+                _connectionTestState = ConnectionTestState.None;
+                Repaint();
                 return;
             }
 
