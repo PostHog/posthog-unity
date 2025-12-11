@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Internal logger for the PostHog SDK.

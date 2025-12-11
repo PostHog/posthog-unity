@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace PostHog.ErrorTracking;
+namespace PostHogUnity.ErrorTracking;
 
 /// <summary>
 /// Parses Unity-formatted stacktraces into structured stack frames.

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace PostHog.ErrorTracking;
+namespace PostHogUnity.ErrorTracking;
 
 /// <summary>
 /// Manages exception tracking for PostHog Unity SDK.

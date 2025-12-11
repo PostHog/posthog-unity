@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Feature flag with metadata in v4 format.

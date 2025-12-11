@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using PostHog;
+using PostHogUnity;
 using UnityEngine;
 
 /// <summary>
@@ -44,9 +44,9 @@ public class PostHogExample : MonoBehaviour
 
         // Option 2: Manual initialization
         // Use this if you need to configure PostHog dynamically or without a settings asset.
-        if (!string.IsNullOrEmpty(apiKey) && !PostHog.PostHog.IsInitialized)
+        if (!string.IsNullOrEmpty(apiKey) && !PostHog.IsInitialized)
         {
-            PostHog.PostHog.Setup(
+            PostHog.Setup(
                 new PostHogConfig
                 {
                     ApiKey = apiKey,
@@ -57,10 +57,10 @@ public class PostHogExample : MonoBehaviour
         }
 
         // Capture a simple event
-        PostHog.PostHog.Capture("app_started");
+        PostHog.Capture("app_started");
 
         // Capture an event with properties
-        PostHog.PostHog.Capture(
+        PostHog.Capture(
             "level_started",
             new Dictionary<string, object> { { "level_id", 1 }, { "difficulty", "normal" } }
         );
@@ -72,10 +72,7 @@ public class PostHogExample : MonoBehaviour
     public async void OnUserLogin(string userId, string email)
     {
         // Identify the user (async to reload feature flags for the new identity)
-        await PostHog.PostHog.IdentifyAsync(
-            userId,
-            new Dictionary<string, object> { { "email", email } }
-        );
+        await PostHog.IdentifyAsync(userId, new Dictionary<string, object> { { "email", email } });
     }
 
     /// <summary>
@@ -84,7 +81,7 @@ public class PostHogExample : MonoBehaviour
     public async void OnUserLogout()
     {
         // Reset to anonymous (async to reload feature flags)
-        await PostHog.PostHog.ResetAsync();
+        await PostHog.ResetAsync();
     }
 
     /// <summary>
@@ -92,7 +89,7 @@ public class PostHogExample : MonoBehaviour
     /// </summary>
     public void TrackPurchase(string productId, float price)
     {
-        PostHog.PostHog.Capture(
+        PostHog.Capture(
             "purchase",
             new Dictionary<string, object>
             {
@@ -108,7 +105,7 @@ public class PostHogExample : MonoBehaviour
     /// </summary>
     public void TrackLevelComplete(int levelId, float timeSeconds, int score)
     {
-        PostHog.PostHog.Capture(
+        PostHog.Capture(
             "level_completed",
             new Dictionary<string, object>
             {
@@ -124,7 +121,7 @@ public class PostHogExample : MonoBehaviour
     /// </summary>
     public void SetUserCompany(string companyId, string companyName)
     {
-        PostHog.PostHog.Group(
+        PostHog.Group(
             "company",
             companyId,
             new Dictionary<string, object> { { "name", companyName } }
@@ -137,7 +134,7 @@ public class PostHogExample : MonoBehaviour
     /// </summary>
     public void SetGameVersion(string version)
     {
-        PostHog.PostHog.Register("game_version", version);
+        PostHog.Register("game_version", version);
     }
 
     #region Feature Flags
@@ -148,18 +145,18 @@ public class PostHogExample : MonoBehaviour
     public void CheckFeatureFlag()
     {
         // Simple boolean check
-        if (PostHog.PostHog.IsFeatureEnabled("new-checkout-flow"))
+        if (PostHog.IsFeatureEnabled("new-checkout-flow"))
         {
             Debug.Log("New checkout flow is enabled!");
         }
 
         // Get a feature flag and check its variant value
-        var experimentFlag = PostHog.PostHog.GetFeatureFlag("experiment-variant");
+        var experimentFlag = PostHog.GetFeatureFlag("experiment-variant");
         string variant = experimentFlag.GetVariant("control");
         Debug.Log($"Experiment variant: {variant}");
 
         // Get a feature flag with payload
-        var flag = PostHog.PostHog.GetFeatureFlag("checkout-config");
+        var flag = PostHog.GetFeatureFlag("checkout-config");
 
         // Option 1: Deserialize payload directly to a typed class
         // Requires [Serializable] class with public fields (see CheckoutConfig above)
@@ -203,12 +200,12 @@ public class PostHogExample : MonoBehaviour
     public void SetFlagProperties()
     {
         // Set person properties for flag targeting
-        PostHog.PostHog.SetPersonPropertiesForFlags(
+        PostHog.SetPersonPropertiesForFlags(
             new Dictionary<string, object> { { "plan", "premium" }, { "beta_user", true } }
         );
 
         // Set group properties for flag targeting
-        PostHog.PostHog.SetGroupPropertiesForFlags(
+        PostHog.SetGroupPropertiesForFlags(
             "company",
             new Dictionary<string, object> { { "size", "enterprise" }, { "industry", "gaming" } }
         );
@@ -219,7 +216,7 @@ public class PostHogExample : MonoBehaviour
     /// </summary>
     public async void RefreshFeatureFlags()
     {
-        await PostHog.PostHog.ReloadFeatureFlagsAsync();
+        await PostHog.ReloadFeatureFlagsAsync();
         Debug.Log("Feature flags reloaded!");
         CheckFeatureFlag();
     }
@@ -229,7 +226,7 @@ public class PostHogExample : MonoBehaviour
     /// </summary>
     void SubscribeToFlagEvents()
     {
-        PostHog.PostHog.OnFeatureFlagsLoaded += OnFlagsLoaded;
+        PostHog.OnFeatureFlagsLoaded += OnFlagsLoaded;
     }
 
     void OnFlagsLoaded()
@@ -243,9 +240,9 @@ public class PostHogExample : MonoBehaviour
     void OnDestroy()
     {
         // Unsubscribe from events
-        PostHog.PostHog.OnFeatureFlagsLoaded -= OnFlagsLoaded;
+        PostHog.OnFeatureFlagsLoaded -= OnFlagsLoaded;
 
         // Flush any remaining events
-        PostHog.PostHog.Flush();
+        PostHog.Flush();
     }
 }

@@ -1,4 +1,4 @@
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Tracks which flag/value combinations have been reported to avoid duplicate events.

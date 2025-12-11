@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Interface for platform-specific storage implementations.

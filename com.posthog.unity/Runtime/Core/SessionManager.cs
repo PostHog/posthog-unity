@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Manages session tracking with 30-minute inactivity timeout.

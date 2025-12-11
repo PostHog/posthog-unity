@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Simple JSON serializer that handles Dictionary&lt;string, object&gt; properly.

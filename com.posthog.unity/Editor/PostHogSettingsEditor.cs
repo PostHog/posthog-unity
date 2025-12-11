@@ -1,8 +1,9 @@
+using PostHogUnity;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace PostHog.Editor;
+namespace PostHogUnity.Editor;
 
 /// <summary>
 /// Custom inspector for PostHogSettings that provides a better editing experience.

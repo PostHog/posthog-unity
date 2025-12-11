@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// A wrapper for JSON values that provides type-safe accessors.

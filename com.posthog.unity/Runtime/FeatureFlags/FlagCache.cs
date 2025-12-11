@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Cache for feature flags with in-memory and persistent storage.

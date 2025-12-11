@@ -5,7 +5,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// HTTP client for sending events to the PostHog API.

@@ -1,6 +1,6 @@
 using System;
 
-namespace PostHog;
+namespace PostHogUnity;
 
 /// <summary>
 /// Generates UUID v7 identifiers (time-ordered UUIDs).

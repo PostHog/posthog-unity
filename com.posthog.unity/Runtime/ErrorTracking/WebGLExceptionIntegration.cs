@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace PostHog.ErrorTracking;
+namespace PostHogUnity.ErrorTracking;
 
 /// <summary>
 /// WebGL-specific exception handler that captures exceptions through Application.logMessageReceived.

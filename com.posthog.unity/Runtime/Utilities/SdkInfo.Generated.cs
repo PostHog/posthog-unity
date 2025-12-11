@@ -3,7 +3,7 @@
 // Do not edit manually.
 // </auto-generated>
 
-namespace PostHog
+namespace PostHogUnity
 {
     static partial class SdkInfo
     {
