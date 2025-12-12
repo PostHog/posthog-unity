@@ -16,6 +16,7 @@ set_source_and_root_dir
 PACKAGE_JSON="com.posthog.unity/package.json"
 VERSION_FILE="com.posthog.unity/Runtime/Utilities/SdkInfo.Generated.cs"
 CHANGELOG_FILE="CHANGELOG.md"
+PACKAGE_CHANGELOG_FILE="com.posthog.unity/CHANGELOG.md"
 REPO="PostHog/posthog-unity"
 
 # Check dependencies
@@ -157,13 +158,17 @@ if [[ -f "$CHANGELOG_FILE" ]]; then
         echo "  Warning: No '## Next' section found in $CHANGELOG_FILE"
         echo "  You may need to manually update the changelog."
     fi
+
+    # Copy changelog to package directory for UPM
+    echo "Copying changelog to package directory..."
+    cp "$CHANGELOG_FILE" "$PACKAGE_CHANGELOG_FILE"
 else
     echo "  Warning: $CHANGELOG_FILE not found, skipping changelog update"
 fi
 
 # Commit
 echo "Committing..."
-git add "$PACKAGE_JSON" "$VERSION_FILE" "$CHANGELOG_FILE"
+git add "$PACKAGE_JSON" "$VERSION_FILE" "$CHANGELOG_FILE" "$PACKAGE_CHANGELOG_FILE"
 git commit -m "Bump version to $new_version"
 
 # Push and create PR
