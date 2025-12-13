@@ -4,427 +4,391 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace PostHogUnity;
-
-/// <summary>
-/// Coordinates feature flag fetching, caching, and evaluation.
-/// </summary>
-class FeatureFlagManager
+namespace PostHogUnity
 {
-    readonly PostHogConfig _config;
-    readonly NetworkClient _networkClient;
-    readonly FlagCache _flagCache;
-    readonly FlagCalledTracker _flagCalledTracker;
-    readonly Func<string> _getDistinctId;
-    readonly Func<string> _getAnonymousId;
-    readonly Func<Dictionary<string, string>> _getGroups;
-    readonly Action<string, Dictionary<string, object>> _captureEvent;
-
-    readonly object _loadingLock = new();
-    bool _isLoading;
-    List<Action> _pendingCallbacks;
-
-    Dictionary<string, object> _personPropertiesForFlags;
-    Dictionary<string, Dictionary<string, object>> _groupPropertiesForFlags;
-
     /// <summary>
-    /// Event raised when feature flags are loaded (from cache or server).
+    /// Coordinates feature flag fetching, caching, and evaluation.
     /// </summary>
-    public event Action OnFeatureFlagsLoaded;
-
-    public FeatureFlagManager(
-        PostHogConfig config,
-        IStorageProvider storage,
-        NetworkClient networkClient,
-        Func<string> getDistinctId,
-        Func<string> getAnonymousId,
-        Func<Dictionary<string, string>> getGroups,
-        Action<string, Dictionary<string, object>> captureEvent
-    )
+    class FeatureFlagManager
     {
-        _config = config;
-        _networkClient = networkClient;
-        _flagCache = new FlagCache(storage);
-        _flagCalledTracker = new FlagCalledTracker();
-        _getDistinctId = getDistinctId;
-        _getAnonymousId = getAnonymousId;
-        _getGroups = getGroups;
-        _captureEvent = captureEvent;
-        _pendingCallbacks = new List<Action>();
-        _personPropertiesForFlags = new Dictionary<string, object>();
-        _groupPropertiesForFlags = new Dictionary<string, Dictionary<string, object>>();
+        readonly PostHogConfig _config;
+        readonly NetworkClient _networkClient;
+        readonly FlagCache _flagCache;
+        readonly FlagCalledTracker _flagCalledTracker;
+        readonly Func<string> _getDistinctId;
+        readonly Func<string> _getAnonymousId;
+        readonly Func<Dictionary<string, string>> _getGroups;
+        readonly Action<string, Dictionary<string, object>> _captureEvent;
 
-        LoadPersonPropertiesForFlags(storage);
-        LoadGroupPropertiesForFlags(storage);
-    }
+        readonly object _loadingLock = new();
+        bool _isLoading;
+        List<Action> _pendingCallbacks;
 
-    /// <summary>
-    /// Whether flags have been loaded (from cache or server).
-    /// </summary>
-    public bool IsLoaded => _flagCache.IsLoaded;
+        Dictionary<string, object> _personPropertiesForFlags;
+        Dictionary<string, Dictionary<string, object>> _groupPropertiesForFlags;
 
-    /// <summary>
-    /// Loads flags from persistent cache.
-    /// </summary>
-    public void LoadFromCache()
-    {
-        _flagCache.LoadFromDisk();
-    }
+        /// <summary>
+        /// Event raised when feature flags are loaded (from cache or server).
+        /// </summary>
+        public event Action OnFeatureFlagsLoaded;
 
-    /// <summary>
-    /// Reloads feature flags from the server.
-    /// </summary>
-    /// <param name="monoBehaviour">MonoBehaviour to run coroutine on</param>
-    /// <returns>A task that completes when flags are loaded</returns>
-    public Task ReloadFeatureFlagsAsync(MonoBehaviour monoBehaviour)
-    {
-        var tcs = new TaskCompletionSource<bool>();
-        ReloadFeatureFlags(monoBehaviour, () => tcs.SetResult(true));
-        return tcs.Task;
-    }
-
-    /// <summary>
-    /// Reloads feature flags from the server.
-    /// Used internally for fire-and-forget scenarios (e.g., initialization).
-    /// For awaitable version, use ReloadFeatureFlagsAsync.
-    /// </summary>
-    /// <param name="monoBehaviour">MonoBehaviour to run coroutine on</param>
-    /// <param name="onComplete">Optional callback when complete</param>
-    internal void ReloadFeatureFlags(MonoBehaviour monoBehaviour, Action onComplete = null)
-    {
-        lock (_loadingLock)
+        public FeatureFlagManager(
+            PostHogConfig config,
+            IStorageProvider storage,
+            NetworkClient networkClient,
+            Func<string> getDistinctId,
+            Func<string> getAnonymousId,
+            Func<Dictionary<string, string>> getGroups,
+            Action<string, Dictionary<string, object>> captureEvent
+        )
         {
-            if (_isLoading)
-            {
-                // Queue callback for when current load completes
-                if (onComplete != null)
-                {
-                    _pendingCallbacks.Add(onComplete);
-                }
-                PostHogLogger.Debug("Feature flag reload already in progress, queuing callback");
-                return;
-            }
-            _isLoading = true;
-        }
-
-        // Reset tracking on reload (same flag/value should trigger new event)
-        _flagCalledTracker.Reset();
-
-        monoBehaviour.StartCoroutine(FetchFlagsCoroutine(onComplete));
-    }
-
-    IEnumerator FetchFlagsCoroutine(Action onComplete)
-    {
-        var distinctId = _getDistinctId();
-        var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
-        var groups = _getGroups();
-
-        // Merge default person properties with custom properties for flags
-        var personProperties = GetMergedPersonProperties();
-
-        yield return _networkClient.FetchFeatureFlags(
-            distinctId,
-            anonymousId,
-            groups,
-            personProperties,
-            _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
-            (json, statusCode) =>
-            {
-                OnFetchComplete(json, statusCode, onComplete);
-            }
-        );
-    }
-
-    void OnFetchComplete(string json, int statusCode, Action onComplete)
-    {
-        if (!string.IsNullOrEmpty(json))
-        {
-            try
-            {
-                var dict = JsonSerializer.DeserializeDictionary(json);
-                if (dict != null)
-                {
-                    var response = FeatureFlagsResponse.FromDictionary(dict);
-                    _flagCache.Update(response);
-
-                    var flagCount = response.FeatureFlags?.Count ?? 0;
-                    PostHogLogger.Debug($"Loaded {flagCount} feature flags from server");
-                }
-            }
-            catch (Exception ex)
-            {
-                PostHogLogger.Error("Failed to parse feature flags response", ex);
-            }
-        }
-        else if (statusCode >= 400)
-        {
-            PostHogLogger.Warning($"Feature flags fetch failed with status {statusCode}");
-        }
-
-        // Complete loading
-        List<Action> callbacksToInvoke;
-        lock (_loadingLock)
-        {
-            _isLoading = false;
-            callbacksToInvoke = _pendingCallbacks;
+            _config = config;
+            _networkClient = networkClient;
+            _flagCache = new FlagCache(storage);
+            _flagCalledTracker = new FlagCalledTracker();
+            _getDistinctId = getDistinctId;
+            _getAnonymousId = getAnonymousId;
+            _getGroups = getGroups;
+            _captureEvent = captureEvent;
             _pendingCallbacks = new List<Action>();
+            _personPropertiesForFlags = new Dictionary<string, object>();
+            _groupPropertiesForFlags = new Dictionary<string, Dictionary<string, object>>();
+
+            LoadPersonPropertiesForFlags(storage);
+            LoadGroupPropertiesForFlags(storage);
         }
 
-        // Invoke callbacks
-        onComplete?.Invoke();
-        foreach (var callback in callbacksToInvoke)
+        /// <summary>
+        /// Whether flags have been loaded (from cache or server).
+        /// </summary>
+        public bool IsLoaded => _flagCache.IsLoaded;
+
+        /// <summary>
+        /// Loads flags from persistent cache.
+        /// </summary>
+        public void LoadFromCache()
         {
-            try
+            _flagCache.LoadFromDisk();
+        }
+
+        /// <summary>
+        /// Reloads feature flags from the server.
+        /// </summary>
+        /// <param name="monoBehaviour">MonoBehaviour to run coroutine on</param>
+        /// <returns>A task that completes when flags are loaded</returns>
+        public Task ReloadFeatureFlagsAsync(MonoBehaviour monoBehaviour)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            ReloadFeatureFlags(monoBehaviour, () => tcs.SetResult(true));
+            return tcs.Task;
+        }
+
+        /// <summary>
+        /// Reloads feature flags from the server.
+        /// Used internally for fire-and-forget scenarios (e.g., initialization).
+        /// For awaitable version, use ReloadFeatureFlagsAsync.
+        /// </summary>
+        /// <param name="monoBehaviour">MonoBehaviour to run coroutine on</param>
+        /// <param name="onComplete">Optional callback when complete</param>
+        internal void ReloadFeatureFlags(MonoBehaviour monoBehaviour, Action onComplete = null)
+        {
+            lock (_loadingLock)
             {
-                callback?.Invoke();
-            }
-            catch (Exception ex)
-            {
-                PostHogLogger.Error("Error in feature flag callback", ex);
-            }
-        }
-
-        // Raise event
-        try
-        {
-            OnFeatureFlagsLoaded?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error("Error in OnFeatureFlagsLoaded event handler", ex);
-        }
-    }
-
-    /// <summary>
-    /// Gets a feature flag value.
-    /// </summary>
-    /// <param name="key">The flag key</param>
-    /// <returns>The flag value (bool, string variant, or null)</returns>
-    public object GetFlag(string key)
-    {
-        return _flagCache.GetFlag(key);
-    }
-
-    /// <summary>
-    /// Gets a feature flag payload.
-    /// </summary>
-    public object GetPayload(string key)
-    {
-        return _flagCache.GetPayload(key);
-    }
-
-    /// <summary>
-    /// Gets full flag details including metadata.
-    /// </summary>
-    public FeatureFlag GetFlagDetails(string key)
-    {
-        return _flagCache.GetFlagDetails(key);
-    }
-
-    /// <summary>
-    /// Tracks a feature flag call event if not already tracked.
-    /// </summary>
-    public void TrackFlagCalled(string key, object value)
-    {
-        var distinctId = _getDistinctId();
-
-        if (!_flagCalledTracker.ShouldTrack(distinctId, key, value))
-        {
-            return;
-        }
-
-        var properties = new Dictionary<string, object>
-        {
-            ["$feature_flag"] = key,
-            ["$feature_flag_response"] = value ?? "",
-        };
-
-        // Add metadata if available
-        var requestId = _flagCache.RequestId;
-        if (!string.IsNullOrEmpty(requestId))
-        {
-            properties["$feature_flag_request_id"] = requestId;
-        }
-
-        var evaluatedAt = _flagCache.EvaluatedAt;
-        if (evaluatedAt.HasValue)
-        {
-            properties["$feature_flag_evaluated_at"] = evaluatedAt.Value;
-        }
-
-        var flagDetails = _flagCache.GetFlagDetails(key);
-        if (flagDetails != null)
-        {
-            if (flagDetails.Metadata != null)
-            {
-                properties["$feature_flag_id"] = flagDetails.Metadata.Id;
-                properties["$feature_flag_version"] = flagDetails.Metadata.Version;
+                if (_isLoading)
+                {
+                    // Queue callback for when current load completes
+                    if (onComplete != null)
+                    {
+                        _pendingCallbacks.Add(onComplete);
+                    }
+                    PostHogLogger.Debug(
+                        "Feature flag reload already in progress, queuing callback"
+                    );
+                    return;
+                }
+                _isLoading = true;
             }
 
-            if (flagDetails.Reason != null)
-            {
-                properties["$feature_flag_reason"] = flagDetails.Reason.Description ?? "";
-            }
+            // Reset tracking on reload (same flag/value should trigger new event)
+            _flagCalledTracker.Reset();
+
+            monoBehaviour.StartCoroutine(FetchFlagsCoroutine(onComplete));
         }
 
-        _captureEvent("$feature_flag_called", properties);
-        PostHogLogger.Debug($"Tracked feature flag call: {key}={value}");
-    }
-
-    /// <summary>
-    /// Clears the flag cache.
-    /// </summary>
-    public void Clear()
-    {
-        _flagCache.Clear();
-        _flagCalledTracker.Reset();
-    }
-
-    #region Person Properties for Flags
-
-    /// <summary>
-    /// Sets person properties to be sent with flag requests.
-    /// </summary>
-    public void SetPersonPropertiesForFlags(
-        Dictionary<string, object> properties,
-        IStorageProvider storage,
-        bool reloadFeatureFlags,
-        MonoBehaviour monoBehaviour
-    )
-    {
-        if (properties == null)
-            return;
-
-        foreach (var kvp in properties)
+        IEnumerator FetchFlagsCoroutine(Action onComplete)
         {
-            _personPropertiesForFlags[kvp.Key] = kvp.Value;
+            var distinctId = _getDistinctId();
+            var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
+            var groups = _getGroups();
+
+            // Merge default person properties with custom properties for flags
+            var personProperties = GetMergedPersonProperties();
+
+            yield return _networkClient.FetchFeatureFlags(
+                distinctId,
+                anonymousId,
+                groups,
+                personProperties,
+                _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
+                (json, statusCode) =>
+                {
+                    OnFetchComplete(json, statusCode, onComplete);
+                }
+            );
         }
 
-        SavePersonPropertiesForFlags(storage);
-
-        if (reloadFeatureFlags)
+        void OnFetchComplete(string json, int statusCode, Action onComplete)
         {
-            ReloadFeatureFlags(monoBehaviour);
-        }
-    }
-
-    /// <summary>
-    /// Resets all person properties for flags.
-    /// </summary>
-    public void ResetPersonPropertiesForFlags(
-        IStorageProvider storage,
-        bool reloadFeatureFlags,
-        MonoBehaviour monoBehaviour
-    )
-    {
-        _personPropertiesForFlags.Clear();
-        SavePersonPropertiesForFlags(storage);
-
-        if (reloadFeatureFlags)
-        {
-            ReloadFeatureFlags(monoBehaviour);
-        }
-    }
-
-    void LoadPersonPropertiesForFlags(IStorageProvider storage)
-    {
-        try
-        {
-            var json = storage.LoadState("person_properties_for_flags");
             if (!string.IsNullOrEmpty(json))
             {
-                var props = JsonSerializer.DeserializeDictionary(json);
-                if (props != null)
+                try
                 {
-                    _personPropertiesForFlags = props;
+                    var dict = JsonSerializer.DeserializeDictionary(json);
+                    if (dict != null)
+                    {
+                        var response = FeatureFlagsResponse.FromDictionary(dict);
+                        _flagCache.Update(response);
+
+                        var flagCount = response.FeatureFlags?.Count ?? 0;
+                        PostHogLogger.Debug($"Loaded {flagCount} feature flags from server");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Error("Failed to parse feature flags response", ex);
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error("Failed to load person properties for flags", ex);
-        }
-    }
+            else if (statusCode >= 400)
+            {
+                PostHogLogger.Warning($"Feature flags fetch failed with status {statusCode}");
+            }
 
-    void SavePersonPropertiesForFlags(IStorageProvider storage)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(_personPropertiesForFlags);
-            storage.SaveState("person_properties_for_flags", json);
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error("Failed to save person properties for flags", ex);
-        }
-    }
+            // Complete loading
+            List<Action> callbacksToInvoke;
+            lock (_loadingLock)
+            {
+                _isLoading = false;
+                callbacksToInvoke = _pendingCallbacks;
+                _pendingCallbacks = new List<Action>();
+            }
 
-    #endregion
+            // Invoke callbacks
+            onComplete?.Invoke();
+            foreach (var callback in callbacksToInvoke)
+            {
+                try
+                {
+                    callback?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Error("Error in feature flag callback", ex);
+                }
+            }
 
-    #region Group Properties for Flags
-
-    /// <summary>
-    /// Sets group properties to be sent with flag requests.
-    /// </summary>
-    public void SetGroupPropertiesForFlags(
-        string groupType,
-        Dictionary<string, object> properties,
-        IStorageProvider storage,
-        bool reloadFeatureFlags,
-        MonoBehaviour monoBehaviour
-    )
-    {
-        if (string.IsNullOrEmpty(groupType) || properties == null)
-            return;
-
-        if (!_groupPropertiesForFlags.ContainsKey(groupType))
-        {
-            _groupPropertiesForFlags[groupType] = new Dictionary<string, object>();
+            // Raise event
+            try
+            {
+                OnFeatureFlagsLoaded?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("Error in OnFeatureFlagsLoaded event handler", ex);
+            }
         }
 
-        foreach (var kvp in properties)
+        /// <summary>
+        /// Gets a feature flag value.
+        /// </summary>
+        /// <param name="key">The flag key</param>
+        /// <returns>The flag value (bool, string variant, or null)</returns>
+        public object GetFlag(string key)
         {
-            _groupPropertiesForFlags[groupType][kvp.Key] = kvp.Value;
+            return _flagCache.GetFlag(key);
         }
 
-        SaveGroupPropertiesForFlags(storage);
-
-        if (reloadFeatureFlags)
+        /// <summary>
+        /// Gets a feature flag payload.
+        /// </summary>
+        public object GetPayload(string key)
         {
-            ReloadFeatureFlags(monoBehaviour);
+            return _flagCache.GetPayload(key);
         }
-    }
 
-    /// <summary>
-    /// Resets all group properties for flags.
-    /// </summary>
-    public void ResetGroupPropertiesForFlags(
-        IStorageProvider storage,
-        bool reloadFeatureFlags,
-        MonoBehaviour monoBehaviour
-    )
-    {
-        _groupPropertiesForFlags.Clear();
-        SaveGroupPropertiesForFlags(storage);
-
-        if (reloadFeatureFlags)
+        /// <summary>
+        /// Gets full flag details including metadata.
+        /// </summary>
+        public FeatureFlag GetFlagDetails(string key)
         {
-            ReloadFeatureFlags(monoBehaviour);
+            return _flagCache.GetFlagDetails(key);
         }
-    }
 
-    /// <summary>
-    /// Resets group properties for a specific group type.
-    /// </summary>
-    public void ResetGroupPropertiesForFlags(
-        string groupType,
-        IStorageProvider storage,
-        bool reloadFeatureFlags,
-        MonoBehaviour monoBehaviour
-    )
-    {
-        if (_groupPropertiesForFlags.Remove(groupType))
+        /// <summary>
+        /// Tracks a feature flag call event if not already tracked.
+        /// </summary>
+        public void TrackFlagCalled(string key, object value)
         {
+            var distinctId = _getDistinctId();
+
+            if (!_flagCalledTracker.ShouldTrack(distinctId, key, value))
+            {
+                return;
+            }
+
+            var properties = new Dictionary<string, object>
+            {
+                ["$feature_flag"] = key,
+                ["$feature_flag_response"] = value ?? "",
+            };
+
+            // Add metadata if available
+            var requestId = _flagCache.RequestId;
+            if (!string.IsNullOrEmpty(requestId))
+            {
+                properties["$feature_flag_request_id"] = requestId;
+            }
+
+            var evaluatedAt = _flagCache.EvaluatedAt;
+            if (evaluatedAt.HasValue)
+            {
+                properties["$feature_flag_evaluated_at"] = evaluatedAt.Value;
+            }
+
+            var flagDetails = _flagCache.GetFlagDetails(key);
+            if (flagDetails != null)
+            {
+                if (flagDetails.Metadata != null)
+                {
+                    properties["$feature_flag_id"] = flagDetails.Metadata.Id;
+                    properties["$feature_flag_version"] = flagDetails.Metadata.Version;
+                }
+
+                if (flagDetails.Reason != null)
+                {
+                    properties["$feature_flag_reason"] = flagDetails.Reason.Description ?? "";
+                }
+            }
+
+            _captureEvent("$feature_flag_called", properties);
+            PostHogLogger.Debug($"Tracked feature flag call: {key}={value}");
+        }
+
+        /// <summary>
+        /// Clears the flag cache.
+        /// </summary>
+        public void Clear()
+        {
+            _flagCache.Clear();
+            _flagCalledTracker.Reset();
+        }
+
+        #region Person Properties for Flags
+
+        /// <summary>
+        /// Sets person properties to be sent with flag requests.
+        /// </summary>
+        public void SetPersonPropertiesForFlags(
+            Dictionary<string, object> properties,
+            IStorageProvider storage,
+            bool reloadFeatureFlags,
+            MonoBehaviour monoBehaviour
+        )
+        {
+            if (properties == null)
+                return;
+
+            foreach (var kvp in properties)
+            {
+                _personPropertiesForFlags[kvp.Key] = kvp.Value;
+            }
+
+            SavePersonPropertiesForFlags(storage);
+
+            if (reloadFeatureFlags)
+            {
+                ReloadFeatureFlags(monoBehaviour);
+            }
+        }
+
+        /// <summary>
+        /// Resets all person properties for flags.
+        /// </summary>
+        public void ResetPersonPropertiesForFlags(
+            IStorageProvider storage,
+            bool reloadFeatureFlags,
+            MonoBehaviour monoBehaviour
+        )
+        {
+            _personPropertiesForFlags.Clear();
+            SavePersonPropertiesForFlags(storage);
+
+            if (reloadFeatureFlags)
+            {
+                ReloadFeatureFlags(monoBehaviour);
+            }
+        }
+
+        void LoadPersonPropertiesForFlags(IStorageProvider storage)
+        {
+            try
+            {
+                var json = storage.LoadState("person_properties_for_flags");
+                if (!string.IsNullOrEmpty(json))
+                {
+                    var props = JsonSerializer.DeserializeDictionary(json);
+                    if (props != null)
+                    {
+                        _personPropertiesForFlags = props;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("Failed to load person properties for flags", ex);
+            }
+        }
+
+        void SavePersonPropertiesForFlags(IStorageProvider storage)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(_personPropertiesForFlags);
+                storage.SaveState("person_properties_for_flags", json);
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("Failed to save person properties for flags", ex);
+            }
+        }
+
+        #endregion
+
+        #region Group Properties for Flags
+
+        /// <summary>
+        /// Sets group properties to be sent with flag requests.
+        /// </summary>
+        public void SetGroupPropertiesForFlags(
+            string groupType,
+            Dictionary<string, object> properties,
+            IStorageProvider storage,
+            bool reloadFeatureFlags,
+            MonoBehaviour monoBehaviour
+        )
+        {
+            if (string.IsNullOrEmpty(groupType) || properties == null)
+                return;
+
+            if (!_groupPropertiesForFlags.ContainsKey(groupType))
+            {
+                _groupPropertiesForFlags[groupType] = new Dictionary<string, object>();
+            }
+
+            foreach (var kvp in properties)
+            {
+                _groupPropertiesForFlags[groupType][kvp.Key] = kvp.Value;
+            }
+
             SaveGroupPropertiesForFlags(storage);
 
             if (reloadFeatureFlags)
@@ -432,100 +396,140 @@ class FeatureFlagManager
                 ReloadFeatureFlags(monoBehaviour);
             }
         }
-    }
 
-    void LoadGroupPropertiesForFlags(IStorageProvider storage)
-    {
-        try
+        /// <summary>
+        /// Resets all group properties for flags.
+        /// </summary>
+        public void ResetGroupPropertiesForFlags(
+            IStorageProvider storage,
+            bool reloadFeatureFlags,
+            MonoBehaviour monoBehaviour
+        )
         {
-            var json = storage.LoadState("group_properties_for_flags");
-            if (!string.IsNullOrEmpty(json))
+            _groupPropertiesForFlags.Clear();
+            SaveGroupPropertiesForFlags(storage);
+
+            if (reloadFeatureFlags)
             {
-                var data = JsonSerializer.DeserializeDictionary(json);
-                if (data != null)
+                ReloadFeatureFlags(monoBehaviour);
+            }
+        }
+
+        /// <summary>
+        /// Resets group properties for a specific group type.
+        /// </summary>
+        public void ResetGroupPropertiesForFlags(
+            string groupType,
+            IStorageProvider storage,
+            bool reloadFeatureFlags,
+            MonoBehaviour monoBehaviour
+        )
+        {
+            if (_groupPropertiesForFlags.Remove(groupType))
+            {
+                SaveGroupPropertiesForFlags(storage);
+
+                if (reloadFeatureFlags)
                 {
-                    _groupPropertiesForFlags = new Dictionary<string, Dictionary<string, object>>();
-                    foreach (var kvp in data)
+                    ReloadFeatureFlags(monoBehaviour);
+                }
+            }
+        }
+
+        void LoadGroupPropertiesForFlags(IStorageProvider storage)
+        {
+            try
+            {
+                var json = storage.LoadState("group_properties_for_flags");
+                if (!string.IsNullOrEmpty(json))
+                {
+                    var data = JsonSerializer.DeserializeDictionary(json);
+                    if (data != null)
                     {
-                        if (kvp.Value is Dictionary<string, object> groupProps)
+                        _groupPropertiesForFlags =
+                            new Dictionary<string, Dictionary<string, object>>();
+                        foreach (var kvp in data)
                         {
-                            _groupPropertiesForFlags[kvp.Key] = groupProps;
+                            if (kvp.Value is Dictionary<string, object> groupProps)
+                            {
+                                _groupPropertiesForFlags[kvp.Key] = groupProps;
+                            }
                         }
                     }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error("Failed to load group properties for flags", ex);
-        }
-    }
-
-    void SaveGroupPropertiesForFlags(IStorageProvider storage)
-    {
-        try
-        {
-            // Convert to Dictionary<string, object> for serialization
-            var data = new Dictionary<string, object>();
-            foreach (var kvp in _groupPropertiesForFlags)
+            catch (Exception ex)
             {
-                data[kvp.Key] = kvp.Value;
+                PostHogLogger.Error("Failed to load group properties for flags", ex);
+            }
+        }
+
+        void SaveGroupPropertiesForFlags(IStorageProvider storage)
+        {
+            try
+            {
+                // Convert to Dictionary<string, object> for serialization
+                var data = new Dictionary<string, object>();
+                foreach (var kvp in _groupPropertiesForFlags)
+                {
+                    data[kvp.Key] = kvp.Value;
+                }
+
+                var json = JsonSerializer.Serialize(data);
+                storage.SaveState("group_properties_for_flags", json);
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("Failed to save group properties for flags", ex);
+            }
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        IReadOnlyDictionary<string, object> GetMergedPersonProperties()
+        {
+            bool hasCustomProperties = _personPropertiesForFlags.Count > 0;
+            bool hasDefaultProperties = _config.SendDefaultPersonPropertiesForFlags;
+
+            // Fast path: no properties at all
+            if (!hasCustomProperties && !hasDefaultProperties)
+            {
+                return null;
             }
 
-            var json = JsonSerializer.Serialize(data);
-            storage.SaveState("group_properties_for_flags", json);
+            // Fast path: only custom properties, no need to merge.
+            // Returns internal dictionary directly to avoid allocation - caller only serializes it.
+            if (hasCustomProperties && !hasDefaultProperties)
+            {
+                return _personPropertiesForFlags;
+            }
+
+            // Build merged dictionary only when necessary
+            var merged = new Dictionary<string, object>(7 + _personPropertiesForFlags.Count);
+
+            // Add default properties if enabled
+            if (hasDefaultProperties)
+            {
+                merged["$app_version"] = Application.version;
+                merged["$app_build"] = Application.buildGUID;
+                merged["$os_name"] = PlatformInfo.GetOperatingSystem();
+                merged["$os_version"] = SystemInfo.operatingSystem;
+                merged["$device_type"] = PlatformInfo.GetDeviceType();
+                merged["$lib"] = SdkInfo.LibraryName;
+                merged["$lib_version"] = SdkInfo.Version;
+            }
+
+            // Override with custom properties
+            foreach (var kvp in _personPropertiesForFlags)
+            {
+                merged[kvp.Key] = kvp.Value;
+            }
+
+            return merged;
         }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error("Failed to save group properties for flags", ex);
-        }
+
+        #endregion
     }
-
-    #endregion
-
-    #region Helper Methods
-
-    IReadOnlyDictionary<string, object> GetMergedPersonProperties()
-    {
-        bool hasCustomProperties = _personPropertiesForFlags.Count > 0;
-        bool hasDefaultProperties = _config.SendDefaultPersonPropertiesForFlags;
-
-        // Fast path: no properties at all
-        if (!hasCustomProperties && !hasDefaultProperties)
-        {
-            return null;
-        }
-
-        // Fast path: only custom properties, no need to merge.
-        // Returns internal dictionary directly to avoid allocation - caller only serializes it.
-        if (hasCustomProperties && !hasDefaultProperties)
-        {
-            return _personPropertiesForFlags;
-        }
-
-        // Build merged dictionary only when necessary
-        var merged = new Dictionary<string, object>(7 + _personPropertiesForFlags.Count);
-
-        // Add default properties if enabled
-        if (hasDefaultProperties)
-        {
-            merged["$app_version"] = Application.version;
-            merged["$app_build"] = Application.buildGUID;
-            merged["$os_name"] = PlatformInfo.GetOperatingSystem();
-            merged["$os_version"] = SystemInfo.operatingSystem;
-            merged["$device_type"] = PlatformInfo.GetDeviceType();
-            merged["$lib"] = SdkInfo.LibraryName;
-            merged["$lib_version"] = SdkInfo.Version;
-        }
-
-        // Override with custom properties
-        foreach (var kvp in _personPropertiesForFlags)
-        {
-            merged[kvp.Key] = kvp.Value;
-        }
-
-        return merged;
-    }
-
-    #endregion
 }

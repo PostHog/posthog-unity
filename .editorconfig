@@ -18,9 +18,9 @@ insert_final_newline = true
 # posthog-dotnet style: explicit 'internal' on types, implicit 'private' on members
 dotnet_style_require_accessibility_modifiers = omit_if_default:warning
 
-# Namespace preferences - file-scoped namespaces like posthog-dotnet
-# Note: Unity 2021.3 uses C# 9.0 which supports file-scoped namespaces
-csharp_style_namespace_declarations = file_scoped:warning
+# Namespace preferences - block-scoped namespaces for C# 9.0 compatibility
+# Note: Unity 2021.3 uses C# 9.0 which does NOT support file-scoped namespaces
+csharp_style_namespace_declarations = block_scoped:warning
 
 # var preferences - match posthog-dotnet style
 csharp_style_var_for_built_in_types = false:suggestion

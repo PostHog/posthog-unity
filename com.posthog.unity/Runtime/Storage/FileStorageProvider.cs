@@ -5,129 +5,265 @@ using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace PostHogUnity;
-
-/// <summary>
-/// File-based storage provider for Standalone and Mobile platforms.
-/// Uses one file per event for crash resilience.
-/// File I/O is performed on a background thread to avoid blocking the main thread.
-/// </summary>
-public class FileStorageProvider : IStorageProvider
+namespace PostHogUnity
 {
-    string _queuePath;
-    string _statePath;
-    readonly object _lock = new();
-    List<string> _eventIds;
-
-    // Track pending writes so we can wait for them on shutdown
-    readonly ConcurrentDictionary<string, Task> _pendingWrites = new();
-
-    public void Initialize(string basePath)
+    /// <summary>
+    /// File-based storage provider for Standalone and Mobile platforms.
+    /// Uses one file per event for crash resilience.
+    /// File I/O is performed on a background thread to avoid blocking the main thread.
+    /// </summary>
+    public class FileStorageProvider : IStorageProvider
     {
-        _queuePath = Path.Combine(basePath, "queue");
-        _statePath = Path.Combine(basePath, "state");
+        string _queuePath;
+        string _statePath;
+        readonly object _lock = new();
+        List<string> _eventIds;
 
-        try
-        {
-            Directory.CreateDirectory(_queuePath);
-            Directory.CreateDirectory(_statePath);
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error("Failed to create storage directories", ex);
-        }
+        // Track pending writes so we can wait for them on shutdown
+        readonly ConcurrentDictionary<string, Task> _pendingWrites = new();
 
-        LoadEventIds();
-    }
-
-    void LoadEventIds()
-    {
-        lock (_lock)
+        public void Initialize(string basePath)
         {
-            _eventIds = new List<string>();
+            _queuePath = Path.Combine(basePath, "queue");
+            _statePath = Path.Combine(basePath, "state");
 
             try
             {
-                if (Directory.Exists(_queuePath))
-                {
-                    // Avoid LINQ allocation - sort array in place
-                    var files = Directory.GetFiles(_queuePath, "*.json");
-                    Array.Sort(files); // UUID v7 filenames are time-sortable
-
-                    // Extract filenames without extension
-                    for (int i = 0; i < files.Length; i++)
-                    {
-                        _eventIds.Add(Path.GetFileNameWithoutExtension(files[i]));
-                    }
-
-                    PostHogLogger.Debug($"Loaded {_eventIds.Count} events from disk");
-                }
+                Directory.CreateDirectory(_queuePath);
+                Directory.CreateDirectory(_statePath);
             }
             catch (Exception ex)
             {
-                PostHogLogger.Error("Failed to load event index", ex);
+                PostHogLogger.Error("Failed to create storage directories", ex);
             }
-        }
-    }
 
-    public void SaveEvent(string id, string jsonData)
-    {
-        // Add to index immediately so the event is counted
-        lock (_lock)
-        {
-            if (!_eventIds.Contains(id))
-            {
-                _eventIds.Add(id);
-            }
+            LoadEventIds();
         }
 
-        // Write file on background thread to avoid blocking main thread
-        // Note: We don't call PostHogLogger from inside Task.Run() because
-        // UnityEngine.Debug.Log() is not thread-safe
-        var filePath = GetEventFilePath(id);
-        var writeTask = Task.Run(() =>
+        void LoadEventIds()
         {
-            try
+            lock (_lock)
             {
-                File.WriteAllText(filePath, jsonData);
-            }
-            catch (Exception)
-            {
-                // Remove from index if write failed
-                lock (_lock)
+                _eventIds = new List<string>();
+
+                try
                 {
-                    _eventIds.Remove(id);
+                    if (Directory.Exists(_queuePath))
+                    {
+                        // Avoid LINQ allocation - sort array in place
+                        var files = Directory.GetFiles(_queuePath, "*.json");
+                        Array.Sort(files); // UUID v7 filenames are time-sortable
+
+                        // Extract filenames without extension
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            _eventIds.Add(Path.GetFileNameWithoutExtension(files[i]));
+                        }
+
+                        PostHogLogger.Debug($"Loaded {_eventIds.Count} events from disk");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Error("Failed to load event index", ex);
                 }
             }
-            finally
-            {
-                _pendingWrites.TryRemove(id, out _);
-            }
-        });
+        }
 
-        _pendingWrites[id] = writeTask;
-    }
-
-    public string LoadEvent(string id)
-    {
-        // Wait for any pending write for this event to complete
-        if (_pendingWrites.TryGetValue(id, out var pendingWrite))
+        public void SaveEvent(string id, string jsonData)
         {
-            try
+            // Add to index immediately so the event is counted
+            lock (_lock)
             {
-                pendingWrite.Wait();
+                if (!_eventIds.Contains(id))
+                {
+                    _eventIds.Add(id);
+                }
             }
-            catch (AggregateException)
+
+            // Write file on background thread to avoid blocking main thread
+            // Note: We don't call PostHogLogger from inside Task.Run() because
+            // UnityEngine.Debug.Log() is not thread-safe
+            var filePath = GetEventFilePath(id);
+            var writeTask = Task.Run(() =>
             {
-                // Write failed, but we'll handle that below
+                try
+                {
+                    File.WriteAllText(filePath, jsonData);
+                }
+                catch (Exception)
+                {
+                    // Remove from index if write failed
+                    lock (_lock)
+                    {
+                        _eventIds.Remove(id);
+                    }
+                }
+                finally
+                {
+                    _pendingWrites.TryRemove(id, out _);
+                }
+            });
+
+            _pendingWrites[id] = writeTask;
+        }
+
+        public string LoadEvent(string id)
+        {
+            // Wait for any pending write for this event to complete
+            if (_pendingWrites.TryGetValue(id, out var pendingWrite))
+            {
+                try
+                {
+                    pendingWrite.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // Write failed, but we'll handle that below
+                }
+            }
+
+            lock (_lock)
+            {
+                try
+                {
+                    var filePath = GetEventFilePath(id);
+                    if (File.Exists(filePath))
+                    {
+                        return File.ReadAllText(filePath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Error($"Failed to load event {id}", ex);
+                    // Remove corrupted event from index
+                    _eventIds.Remove(id);
+                    TryDeleteFile(GetEventFilePath(id));
+                }
+
+                return null;
             }
         }
 
-        lock (_lock)
+        public void DeleteEvent(string id)
+        {
+            // Wait for any pending write for this event to complete before deleting
+            if (_pendingWrites.TryGetValue(id, out var pendingWrite))
+            {
+                try
+                {
+                    pendingWrite.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // Write failed, continue with deletion anyway
+                }
+            }
+
+            lock (_lock)
+            {
+                try
+                {
+                    var filePath = GetEventFilePath(id);
+                    TryDeleteFile(filePath);
+                    _eventIds.Remove(id);
+                    PostHogLogger.Debug($"Deleted event {id}");
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Error($"Failed to delete event {id}", ex);
+                }
+            }
+        }
+
+        public IReadOnlyList<string> GetEventIds()
+        {
+            lock (_lock)
+            {
+                return _eventIds.AsReadOnly();
+            }
+        }
+
+        public int GetEventCount()
+        {
+            lock (_lock)
+            {
+                return _eventIds.Count;
+            }
+        }
+
+        public void Clear()
+        {
+            // Wait for all pending writes before clearing
+            FlushPendingWrites();
+
+            lock (_lock)
+            {
+                try
+                {
+                    // Create a copy to iterate since we're modifying the collection
+                    var eventIdsCopy = new List<string>(_eventIds);
+                    foreach (var id in eventIdsCopy)
+                    {
+                        TryDeleteFile(GetEventFilePath(id));
+                    }
+                    _eventIds.Clear();
+                    PostHogLogger.Debug("Cleared all events");
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Error("Failed to clear events", ex);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Waits for all pending file writes to complete.
+        /// Call this before app shutdown to ensure all events are persisted.
+        /// </summary>
+        public void FlushPendingWrites()
+        {
+            // Copy values to array without LINQ
+            var values = _pendingWrites.Values;
+            var pendingTasks = new Task[values.Count];
+            values.CopyTo(pendingTasks, 0);
+            if (pendingTasks.Length > 0)
+            {
+                PostHogLogger.Debug(
+                    $"Waiting for {pendingTasks.Length} pending writes to complete"
+                );
+                try
+                {
+                    Task.WaitAll(pendingTasks);
+                }
+                catch (AggregateException ex)
+                {
+                    PostHogLogger.Warning(
+                        $"Some pending writes failed: {ex.InnerExceptions.Count} errors"
+                    );
+                }
+            }
+        }
+
+        public void SaveState(string key, string jsonData)
         {
             try
             {
-                var filePath = GetEventFilePath(id);
+                var filePath = GetStateFilePath(key);
+                File.WriteAllText(filePath, jsonData);
+                PostHogLogger.Debug($"Saved state {key}");
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error($"Failed to save state {key}", ex);
+            }
+        }
+
+        public string LoadState(string key)
+        {
+            try
+            {
+                var filePath = GetStateFilePath(key);
                 if (File.Exists(filePath))
                 {
                     return File.ReadAllText(filePath);
@@ -135,182 +271,49 @@ public class FileStorageProvider : IStorageProvider
             }
             catch (Exception ex)
             {
-                PostHogLogger.Error($"Failed to load event {id}", ex);
-                // Remove corrupted event from index
-                _eventIds.Remove(id);
-                TryDeleteFile(GetEventFilePath(id));
+                PostHogLogger.Error($"Failed to load state {key}", ex);
             }
 
             return null;
         }
-    }
 
-    public void DeleteEvent(string id)
-    {
-        // Wait for any pending write for this event to complete before deleting
-        if (_pendingWrites.TryGetValue(id, out var pendingWrite))
+        public void DeleteState(string key)
         {
             try
             {
-                pendingWrite.Wait();
-            }
-            catch (AggregateException)
-            {
-                // Write failed, continue with deletion anyway
-            }
-        }
-
-        lock (_lock)
-        {
-            try
-            {
-                var filePath = GetEventFilePath(id);
+                var filePath = GetStateFilePath(key);
                 TryDeleteFile(filePath);
-                _eventIds.Remove(id);
-                PostHogLogger.Debug($"Deleted event {id}");
+                PostHogLogger.Debug($"Deleted state {key}");
             }
             catch (Exception ex)
             {
-                PostHogLogger.Error($"Failed to delete event {id}", ex);
+                PostHogLogger.Error($"Failed to delete state {key}", ex);
             }
         }
-    }
 
-    public IReadOnlyList<string> GetEventIds()
-    {
-        lock (_lock)
+        string GetEventFilePath(string id)
         {
-            return _eventIds.AsReadOnly();
+            return Path.Combine(_queuePath, $"{id}.json");
         }
-    }
 
-    public int GetEventCount()
-    {
-        lock (_lock)
+        string GetStateFilePath(string key)
         {
-            return _eventIds.Count;
+            return Path.Combine(_statePath, $"{key}.json");
         }
-    }
 
-    public void Clear()
-    {
-        // Wait for all pending writes before clearing
-        FlushPendingWrites();
-
-        lock (_lock)
+        static void TryDeleteFile(string path)
         {
             try
             {
-                // Create a copy to iterate since we're modifying the collection
-                var eventIdsCopy = new List<string>(_eventIds);
-                foreach (var id in eventIdsCopy)
+                if (File.Exists(path))
                 {
-                    TryDeleteFile(GetEventFilePath(id));
+                    File.Delete(path);
                 }
-                _eventIds.Clear();
-                PostHogLogger.Debug("Cleared all events");
             }
             catch (Exception ex)
             {
-                PostHogLogger.Error("Failed to clear events", ex);
+                PostHogLogger.Warning($"Failed to delete file {path}: {ex.Message}");
             }
-        }
-    }
-
-    /// <summary>
-    /// Waits for all pending file writes to complete.
-    /// Call this before app shutdown to ensure all events are persisted.
-    /// </summary>
-    public void FlushPendingWrites()
-    {
-        // Copy values to array without LINQ
-        var values = _pendingWrites.Values;
-        var pendingTasks = new Task[values.Count];
-        values.CopyTo(pendingTasks, 0);
-        if (pendingTasks.Length > 0)
-        {
-            PostHogLogger.Debug($"Waiting for {pendingTasks.Length} pending writes to complete");
-            try
-            {
-                Task.WaitAll(pendingTasks);
-            }
-            catch (AggregateException ex)
-            {
-                PostHogLogger.Warning(
-                    $"Some pending writes failed: {ex.InnerExceptions.Count} errors"
-                );
-            }
-        }
-    }
-
-    public void SaveState(string key, string jsonData)
-    {
-        try
-        {
-            var filePath = GetStateFilePath(key);
-            File.WriteAllText(filePath, jsonData);
-            PostHogLogger.Debug($"Saved state {key}");
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error($"Failed to save state {key}", ex);
-        }
-    }
-
-    public string LoadState(string key)
-    {
-        try
-        {
-            var filePath = GetStateFilePath(key);
-            if (File.Exists(filePath))
-            {
-                return File.ReadAllText(filePath);
-            }
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error($"Failed to load state {key}", ex);
-        }
-
-        return null;
-    }
-
-    public void DeleteState(string key)
-    {
-        try
-        {
-            var filePath = GetStateFilePath(key);
-            TryDeleteFile(filePath);
-            PostHogLogger.Debug($"Deleted state {key}");
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Error($"Failed to delete state {key}", ex);
-        }
-    }
-
-    string GetEventFilePath(string id)
-    {
-        return Path.Combine(_queuePath, $"{id}.json");
-    }
-
-    string GetStateFilePath(string key)
-    {
-        return Path.Combine(_statePath, $"{key}.json");
-    }
-
-    static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (Exception ex)
-        {
-            PostHogLogger.Warning($"Failed to delete file {path}: {ex.Message}");
         }
     }
 }

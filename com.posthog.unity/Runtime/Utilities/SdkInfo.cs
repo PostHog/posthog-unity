@@ -1,12 +1,13 @@
-namespace PostHogUnity;
-
-/// <summary>
-/// SDK information constants. Version is defined in SdkInfo.Generated.cs.
-/// </summary>
-static partial class SdkInfo
+namespace PostHogUnity
 {
     /// <summary>
-    /// The SDK library name.
+    /// SDK information constants. Version is defined in SdkInfo.Generated.cs.
     /// </summary>
-    public const string LibraryName = "posthog-unity";
+    static partial class SdkInfo
+    {
+        /// <summary>
+        /// The SDK library name.
+        /// </summary>
+        public const string LibraryName = "posthog-unity";
+    }
 }
