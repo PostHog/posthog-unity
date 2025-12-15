@@ -1,6 +1,6 @@
-# PostHog Unity SDK
+# PostHog Unity SDK (BETA)
 
-The official PostHog analytics SDK for Unity. Capture events, identify users, and track sessions in your Unity games and applications.
+The [official PostHog analytics SDK for Unity](https://posthog.com/docs/libraries/unity). Capture events, identify users, and track sessions in your Unity games and applications.
 
 ## Requirements
 
