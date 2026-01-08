@@ -203,8 +203,9 @@ namespace PostHogUnity
             // Stop exception tracking
             _exceptionManager?.Stop();
 
-            _eventQueue?.Stop();
+            // Flush before stopping to ensure final events are sent
             _eventQueue?.Flush();
+            _eventQueue?.Stop();
 
             // Wait for any pending file writes to complete
             if (_storage is FileStorageProvider fileStorage)
@@ -952,8 +953,9 @@ namespace PostHogUnity
 
         void OnAppQuit()
         {
-            _eventQueue.Stop();
+            // Flush before stopping to ensure final events are sent
             _eventQueue.Flush();
+            _eventQueue.Stop();
 
             // Synchronously flush pending file writes before quitting
             if (_storage is FileStorageProvider fileStorage)
