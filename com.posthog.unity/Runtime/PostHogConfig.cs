@@ -98,6 +98,21 @@ namespace PostHogUnity
         public Action OnFeatureFlagsLoaded { get; set; }
 
         /// <summary>
+        /// Whether to flush events before the application quits.
+        /// When true, the SDK uses Application.wantsToQuit to delay quitting
+        /// until the final flush completes (with a timeout).
+        /// Defaults to true.
+        /// </summary>
+        public bool FlushOnQuit { get; set; } = true;
+
+        /// <summary>
+        /// Maximum time in seconds to wait for the final flush on quit.
+        /// Only applies when FlushOnQuit is true.
+        /// Defaults to 3 seconds.
+        /// </summary>
+        public float FlushOnQuitTimeoutSeconds { get; set; } = 3f;
+
+        /// <summary>
         /// Custom JSON deserializer for feature flag payloads.
         /// If not set, Unity's JsonUtility is used (which requires [Serializable] and public fields).
         /// Set this to use a library like Newtonsoft.Json for better compatibility.
