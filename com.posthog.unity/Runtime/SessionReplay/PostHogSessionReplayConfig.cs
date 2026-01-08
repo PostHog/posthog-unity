@@ -9,20 +9,6 @@ namespace PostHogUnity.SessionReplay
     public class PostHogSessionReplayConfig
     {
         /// <summary>
-        /// Whether to mask all text in screenshots.
-        /// When enabled, text content will be replaced with asterisks.
-        /// Defaults to true for privacy protection.
-        /// </summary>
-        public bool MaskAllText { get; set; } = true;
-
-        /// <summary>
-        /// Whether to mask all images in screenshots.
-        /// When enabled, images will be replaced with solid color blocks.
-        /// Defaults to true for privacy protection.
-        /// </summary>
-        public bool MaskAllImages { get; set; } = true;
-
-        /// <summary>
         /// Minimum time in seconds between screenshot captures.
         /// Lower values capture more frames but increase CPU/memory usage.
         /// Defaults to 1 second, matching iOS SDK behavior.
