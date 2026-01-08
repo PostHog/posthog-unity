@@ -58,31 +58,21 @@ namespace PostHogUnity.SessionReplay
 
             try
             {
-                // Calculate dimensions
                 int screenWidth = Screen.width;
                 int screenHeight = Screen.height;
                 int scaledWidth = Mathf.RoundToInt(screenWidth * _config.ScreenshotScale);
                 int scaledHeight = Mathf.RoundToInt(screenHeight * _config.ScreenshotScale);
 
-                // Ensure minimum size
                 scaledWidth = Mathf.Max(scaledWidth, 64);
                 scaledHeight = Mathf.Max(scaledHeight, 64);
 
-                // Capture timestamp before async operation
                 long timestamp = GetTimestampMs();
                 int quality = _config.ScreenshotQuality;
 
-                // Ensure render textures are properly sized
                 EnsureRenderTextures(screenWidth, screenHeight, scaledWidth, scaledHeight);
-
-                // Capture screen into render texture (Unity 2019.1+)
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
-
-                // Scale down using GPU blit
                 Graphics.Blit(_fullRT, _scaledRT);
 
-                // Request async readback from scaled render texture
-                // Use RGBA32 to match the RenderTexture format
                 AsyncGPUReadback.Request(_scaledRT, 0, TextureFormat.RGBA32, request =>
                 {
                     OnReadbackComplete(request, scaledWidth, scaledHeight, screenWidth, screenHeight, timestamp, quality, onComplete);
@@ -98,7 +88,6 @@ namespace PostHogUnity.SessionReplay
 
         void EnsureRenderTextures(int screenWidth, int screenHeight, int scaledWidth, int scaledHeight)
         {
-            // Recreate full-size RT if dimensions changed
             if (_fullRT == null || _lastScreenWidth != screenWidth || _lastScreenHeight != screenHeight)
             {
                 if (_fullRT != null)
@@ -113,7 +102,6 @@ namespace PostHogUnity.SessionReplay
                 _lastScreenHeight = screenHeight;
             }
 
-            // Recreate scaled RT if dimensions changed
             if (_scaledRT == null || _lastScaledWidth != scaledWidth || _lastScaledHeight != scaledHeight)
             {
                 if (_scaledRT != null)
@@ -151,23 +139,18 @@ namespace PostHogUnity.SessionReplay
 
             try
             {
-                // Get pixel data from readback
                 var data = request.GetData<byte>();
 
-                // Create texture and load data (must be on main thread)
-                // Use RGBA32 to match the readback format
                 var texture = new Texture2D(scaledWidth, scaledHeight, TextureFormat.RGBA32, false);
                 texture.LoadRawTextureData(data);
                 texture.Apply();
 
-                // Flip texture vertically (Unity's RenderTexture origin is bottom-left, but images expect top-left)
+                // Unity's RenderTexture origin is bottom-left, but images expect top-left
                 FlipTextureVertically(texture);
 
-                // Encode to JPEG (must be on main thread due to Unity API)
                 byte[] jpegBytes = texture.EncodeToJPG(quality);
                 UnityEngine.Object.Destroy(texture);
 
-                // Base64 encoding
                 string base64 = Convert.ToBase64String(jpegBytes);
                 string dataUrl = $"data:image/jpeg;base64,{base64}";
 
@@ -190,11 +173,6 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        /// <summary>
-        /// Flips a texture vertically in-place.
-        /// Required because Unity's RenderTexture has origin at bottom-left,
-        /// but standard image formats expect origin at top-left.
-        /// </summary>
         void FlipTextureVertically(Texture2D texture)
         {
             var pixels = texture.GetPixels();

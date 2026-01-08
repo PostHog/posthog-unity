@@ -56,13 +56,11 @@ namespace PostHogUnity.SessionReplay
             _screenshotCapture = new ScreenshotCapture(config);
             _replayQueue = new ReplayQueue(config, apiKey, host, getDistinctId, getSessionId);
 
-            // Initialize network telemetry if enabled
             if (config.CaptureNetworkTelemetry)
             {
                 _networkTelemetry = new NetworkTelemetry();
             }
 
-            // Initialize console log capture if enabled
             if (config.CaptureLogs)
             {
                 _consoleLogCapture = new ConsoleLogCapture(config.MinLogLevel);
@@ -79,7 +77,6 @@ namespace PostHogUnity.SessionReplay
             if (_isRunning)
                 return;
 
-            // Check for AsyncGPUReadback support - required for session replay
             if (!SystemInfo.supportsAsyncGPUReadback)
             {
                 PostHogLogger.Warning("Session replay disabled: AsyncGPUReadback not supported on this platform");
@@ -95,8 +92,6 @@ namespace PostHogUnity.SessionReplay
             _consoleLogCapture?.Start();
 
             StartCaptureLoop();
-
-            // Send initial meta event
             SendMetaEvent();
 
             PostHogLogger.Info("Session replay started");
@@ -149,14 +144,12 @@ namespace PostHogUnity.SessionReplay
             _consoleLogCapture?.Resume();
             _networkTelemetry?.Resume();
 
-            // Check for session rotation
             var currentSessionId = _getSessionId();
             if (currentSessionId != _lastSessionId)
             {
                 OnSessionRotated();
             }
 
-            // Reset throttle and capture fresh frame
             _screenshotCapture.ResetThrottle();
             SendMetaEvent();
 
@@ -216,9 +209,10 @@ namespace PostHogUnity.SessionReplay
                     return;
             }
 
+            // Convert from Unity coords (bottom-left origin) to web coords (top-left origin)
             var touchEvent = RREvent.CreatePointerEvent(
                 position.x,
-                Screen.height - position.y, // Convert from Unity coords (bottom-left) to web coords (top-left)
+                Screen.height - position.y,
                 touchType,
                 ScreenshotCapture.GetTimestampMs()
             );
@@ -250,7 +244,6 @@ namespace PostHogUnity.SessionReplay
 
             while (_isRunning)
             {
-                // Wait for frame to render
                 yield return waitForEndOfFrame;
 
                 if (!IsActive)
@@ -259,7 +252,6 @@ namespace PostHogUnity.SessionReplay
                     continue;
                 }
 
-                // Check for session rotation
                 var currentSessionId = _getSessionId();
                 if (currentSessionId != _lastSessionId)
                 {
@@ -267,13 +259,11 @@ namespace PostHogUnity.SessionReplay
                     continue;
                 }
 
-                // Try to capture screenshot (respects throttling)
                 if (_screenshotCapture.CanCapture())
                 {
                     CaptureAndEnqueueSnapshot();
                 }
 
-                // Small yield to prevent blocking
                 yield return null;
             }
         }
@@ -302,7 +292,6 @@ namespace PostHogUnity.SessionReplay
 
             var screenName = _currentScreenName;
 
-            // Start async capture
             _screenshotCapture.CaptureScreenshotAsync(result =>
             {
                 OnScreenshotCaptured(result, touchEvents, networkSamples, logs, screenName);
@@ -321,7 +310,6 @@ namespace PostHogUnity.SessionReplay
 
             var events = new List<RREvent>();
 
-            // Add meta event
             events.Add(RREvent.CreateMeta(
                 result.OriginalWidth,
                 result.OriginalHeight,
@@ -329,9 +317,6 @@ namespace PostHogUnity.SessionReplay
                 result.Timestamp
             ));
 
-            // Add screenshot wireframe
-            // Use original dimensions for the wireframe to match meta event
-            // The image data is scaled but the reported size should be the screen size
             var wireframe = RRWireframe.CreateScreenshot(
                 result.OriginalWidth,
                 result.OriginalHeight,
@@ -339,19 +324,16 @@ namespace PostHogUnity.SessionReplay
             );
             events.Add(RREvent.CreateFullSnapshot(wireframe, result.Timestamp));
 
-            // Add pending touch events
             if (touchEvents != null && touchEvents.Count > 0)
             {
                 events.AddRange(touchEvents);
             }
 
-            // Add network telemetry
             if (networkSamples != null && networkSamples.Count > 0)
             {
                 events.Add(RREvent.CreateNetworkPlugin(networkSamples, result.Timestamp));
             }
 
-            // Add console logs
             if (logs != null && logs.Count > 0)
             {
                 events.Add(RREvent.CreateConsoleLogPlugin(logs, result.Timestamp));
@@ -375,13 +357,8 @@ namespace PostHogUnity.SessionReplay
         {
             _lastSessionId = _getSessionId();
 
-            // Clear pending events from old session
             Clear();
-
-            // Reset capture state
             _screenshotCapture.ResetThrottle();
-
-            // Send meta event for new session
             SendMetaEvent();
 
             _onSessionRotate?.Invoke();
@@ -394,13 +371,11 @@ namespace PostHogUnity.SessionReplay
             if (!IsActive)
                 return;
 
-            // Track touch/mouse input
             TrackInput();
         }
 
         void TrackInput()
         {
-            // Handle touch input
             for (int i = 0; i < Input.touchCount; i++)
             {
                 var touch = Input.GetTouch(i);
@@ -412,7 +387,6 @@ namespace PostHogUnity.SessionReplay
                 }
             }
 
-            // Handle mouse input (for editor/desktop)
             if (Input.GetMouseButtonDown(0))
             {
                 RecordTouch(Input.mousePosition, TouchPhase.Began);

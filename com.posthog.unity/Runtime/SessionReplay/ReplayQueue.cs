@@ -97,10 +97,8 @@ namespace PostHogUnity.SessionReplay
 
             lock (_lock)
             {
-                // Check queue size limit
                 if (_queue.Count >= _config.MaxQueueSize)
                 {
-                    // Drop oldest event
                     _queue.RemoveAt(0);
                     PostHogLogger.Warning(
                         $"Replay queue full ({_config.MaxQueueSize}), dropped oldest event"
@@ -111,7 +109,6 @@ namespace PostHogUnity.SessionReplay
                 PostHogLogger.Debug($"Enqueued replay event with {snapshotData.Count} snapshots");
             }
 
-            // Check if we should flush
             FlushIfOverThreshold();
         }
 
@@ -204,7 +201,6 @@ namespace PostHogUnity.SessionReplay
 
         IEnumerator FlushCoroutine()
         {
-            // Prevent concurrent flushes
             lock (_lock)
             {
                 if (_isFlushing)
@@ -215,7 +211,6 @@ namespace PostHogUnity.SessionReplay
                 _isFlushing = true;
             }
 
-            // Check if paused due to errors
             if (_pausedUntil.HasValue && DateTime.UtcNow < _pausedUntil.Value)
             {
                 PostHogLogger.Debug($"Replay queue paused until {_pausedUntil.Value}");
@@ -223,7 +218,6 @@ namespace PostHogUnity.SessionReplay
                 yield break;
             }
 
-            // Check network connectivity
             if (Application.internetReachability == NetworkReachability.NotReachable)
             {
                 PostHogLogger.Debug("No network connectivity, skipping replay flush");
@@ -263,7 +257,6 @@ namespace PostHogUnity.SessionReplay
                     {
                         lock (_lock)
                         {
-                            // Remove sent events
                             for (int i = 0; i < batch.Count && _queue.Count > 0; i++)
                             {
                                 _queue.RemoveAt(0);
@@ -312,7 +305,6 @@ namespace PostHogUnity.SessionReplay
         {
             var url = $"{_host}/s/";
 
-            // Build the batch payload
             var batchList = new List<Dictionary<string, object>>();
             foreach (var evt in events)
             {
@@ -322,7 +314,6 @@ namespace PostHogUnity.SessionReplay
             var json = JsonSerializer.Serialize(batchList);
             var bodyBytes = Encoding.UTF8.GetBytes(json);
 
-            // Compress with GZIP for large payloads
             byte[] compressedBytes = null;
             bool useCompression = bodyBytes.Length > 1024;
 
