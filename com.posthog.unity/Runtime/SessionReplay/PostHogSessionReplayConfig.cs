@@ -32,9 +32,9 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// JPEG compression quality for screenshots (0-100).
         /// Lower values reduce file size but decrease image quality.
-        /// Defaults to 30 for optimal balance between quality and bandwidth.
+        /// Defaults to 80 for good visual quality.
         /// </summary>
-        public int ScreenshotQuality { get; set; } = 30;
+        public int ScreenshotQuality { get; set; } = 80;
 
         /// <summary>
         /// Whether to capture network request telemetry.
@@ -60,9 +60,9 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Scale factor for screenshots (0.1 to 1.0).
         /// Lower values reduce resolution and file size.
-        /// Defaults to 0.5 (half resolution) for optimal performance.
+        /// Defaults to 0.75 for good quality with reasonable file size.
         /// </summary>
-        public float ScreenshotScale { get; set; } = 0.5f;
+        public float ScreenshotScale { get; set; } = 0.75f;
 
         /// <summary>
         /// Maximum number of replay events to queue before flushing.
