@@ -1,18 +1,27 @@
 using System;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace PostHogUnity.SessionReplay
 {
     /// <summary>
     /// Captures and encodes screenshots for session replay with frame sampling.
-    /// Uses throttling to reduce CPU/memory usage and bandwidth.
+    /// Uses AsyncGPUReadback to avoid blocking the main thread during capture.
     /// </summary>
     class ScreenshotCapture
     {
         readonly PostHogSessionReplayConfig _config;
         float _lastCaptureTime;
         bool _isCapturing;
+
+        // Reusable render textures to avoid allocations
+        RenderTexture _fullRT;
+        RenderTexture _scaledRT;
+        int _lastScreenWidth;
+        int _lastScreenHeight;
+        int _lastScaledWidth;
+        int _lastScaledHeight;
 
         public ScreenshotCapture(PostHogSessionReplayConfig config)
         {
@@ -33,21 +42,24 @@ namespace PostHogUnity.SessionReplay
         }
 
         /// <summary>
-        /// Captures a screenshot and returns the result.
-        /// This must be called from a coroutine after WaitForEndOfFrame.
+        /// Captures a screenshot asynchronously using AsyncGPUReadback.
+        /// The callback is invoked on the main thread when capture completes.
         /// </summary>
-        /// <returns>Screenshot result with base64 data and dimensions, or null if capture is throttled.</returns>
-        public ScreenshotResult CaptureScreenshot()
+        /// <param name="onComplete">Callback with the screenshot result, or null if capture failed.</param>
+        public void CaptureScreenshotAsync(Action<ScreenshotResult> onComplete)
         {
             if (!CanCapture())
-                return null;
+            {
+                onComplete?.Invoke(null);
+                return;
+            }
 
             _isCapturing = true;
             _lastCaptureTime = Time.unscaledTime;
 
             try
             {
-                // Calculate scaled dimensions
+                // Calculate dimensions
                 int screenWidth = Screen.width;
                 int screenHeight = Screen.height;
                 int scaledWidth = Mathf.RoundToInt(screenWidth * _config.ScreenshotScale);
@@ -57,74 +69,125 @@ namespace PostHogUnity.SessionReplay
                 scaledWidth = Mathf.Max(scaledWidth, 64);
                 scaledHeight = Mathf.Max(scaledHeight, 64);
 
-                // Read pixels from screen
-                var screenTexture = new Texture2D(screenWidth, screenHeight, TextureFormat.RGB24, false);
-                screenTexture.ReadPixels(new Rect(0, 0, screenWidth, screenHeight), 0, 0);
-                screenTexture.Apply();
+                // Capture timestamp before async operation
+                long timestamp = GetTimestampMs();
+                int quality = _config.ScreenshotQuality;
 
-                Texture2D finalTexture;
+                // Ensure render textures are properly sized
+                EnsureRenderTextures(screenWidth, screenHeight, scaledWidth, scaledHeight);
 
-                // Scale if needed
-                if (scaledWidth != screenWidth || scaledHeight != screenHeight)
+                // Capture screen into render texture (Unity 2019.1+)
+                ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
+
+                // Scale down using GPU blit
+                Graphics.Blit(_fullRT, _scaledRT);
+
+                // Request async readback from scaled render texture
+                AsyncGPUReadback.Request(_scaledRT, 0, TextureFormat.RGB24, request =>
                 {
-                    finalTexture = ScaleTexture(screenTexture, scaledWidth, scaledHeight);
-                    UnityEngine.Object.Destroy(screenTexture);
-                }
-                else
-                {
-                    finalTexture = screenTexture;
-                }
-
-                // Encode to JPEG
-                byte[] jpegBytes = finalTexture.EncodeToJPG(_config.ScreenshotQuality);
-                UnityEngine.Object.Destroy(finalTexture);
-
-                // Convert to base64 data URL
-                string base64 = Convert.ToBase64String(jpegBytes);
-                string dataUrl = $"data:image/jpeg;base64,{base64}";
-
-                return new ScreenshotResult
-                {
-                    Base64Data = dataUrl,
-                    Width = scaledWidth,
-                    Height = scaledHeight,
-                    OriginalWidth = screenWidth,
-                    OriginalHeight = screenHeight,
-                    Timestamp = GetTimestampMs()
-                };
+                    OnReadbackComplete(request, scaledWidth, scaledHeight, screenWidth, screenHeight, timestamp, quality, onComplete);
+                });
             }
             catch (Exception ex)
             {
-                PostHogLogger.Error("Failed to capture screenshot", ex);
-                return null;
-            }
-            finally
-            {
+                PostHogLogger.Error("Failed to initiate screenshot capture", ex);
                 _isCapturing = false;
+                onComplete?.Invoke(null);
             }
         }
 
-        /// <summary>
-        /// Scales a texture to the target dimensions using bilinear filtering.
-        /// </summary>
-        Texture2D ScaleTexture(Texture2D source, int targetWidth, int targetHeight)
+        void EnsureRenderTextures(int screenWidth, int screenHeight, int scaledWidth, int scaledHeight)
         {
-            // Create a temporary RenderTexture for scaling
-            var rt = RenderTexture.GetTemporary(targetWidth, targetHeight, 0, RenderTextureFormat.ARGB32);
-            rt.filterMode = FilterMode.Bilinear;
+            // Recreate full-size RT if dimensions changed
+            if (_fullRT == null || _lastScreenWidth != screenWidth || _lastScreenHeight != screenHeight)
+            {
+                if (_fullRT != null)
+                {
+                    _fullRT.Release();
+                    UnityEngine.Object.Destroy(_fullRT);
+                }
 
-            RenderTexture.active = rt;
-            Graphics.Blit(source, rt);
+                _fullRT = new RenderTexture(screenWidth, screenHeight, 0, RenderTextureFormat.ARGB32);
+                _fullRT.Create();
+                _lastScreenWidth = screenWidth;
+                _lastScreenHeight = screenHeight;
+            }
 
-            // Read back the scaled pixels
-            var scaled = new Texture2D(targetWidth, targetHeight, TextureFormat.RGB24, false);
-            scaled.ReadPixels(new Rect(0, 0, targetWidth, targetHeight), 0, 0);
-            scaled.Apply();
+            // Recreate scaled RT if dimensions changed
+            if (_scaledRT == null || _lastScaledWidth != scaledWidth || _lastScaledHeight != scaledHeight)
+            {
+                if (_scaledRT != null)
+                {
+                    _scaledRT.Release();
+                    UnityEngine.Object.Destroy(_scaledRT);
+                }
 
-            RenderTexture.active = null;
-            RenderTexture.ReleaseTemporary(rt);
+                _scaledRT = new RenderTexture(scaledWidth, scaledHeight, 0, RenderTextureFormat.ARGB32);
+                _scaledRT.filterMode = FilterMode.Bilinear;
+                _scaledRT.Create();
+                _lastScaledWidth = scaledWidth;
+                _lastScaledHeight = scaledHeight;
+            }
+        }
 
-            return scaled;
+        void OnReadbackComplete(
+            AsyncGPUReadbackRequest request,
+            int scaledWidth,
+            int scaledHeight,
+            int screenWidth,
+            int screenHeight,
+            long timestamp,
+            int quality,
+            Action<ScreenshotResult> onComplete)
+        {
+            _isCapturing = false;
+
+            if (request.hasError)
+            {
+                PostHogLogger.Error("AsyncGPUReadback error during screenshot capture");
+                onComplete?.Invoke(null);
+                return;
+            }
+
+            try
+            {
+                // Get pixel data from readback
+                var data = request.GetData<byte>();
+
+                // Create texture and load data (must be on main thread)
+                var texture = new Texture2D(scaledWidth, scaledHeight, TextureFormat.RGB24, false);
+                texture.LoadRawTextureData(data);
+                texture.Apply();
+
+                // Encode to JPEG (must be on main thread due to Unity API)
+                byte[] jpegBytes = texture.EncodeToJPG(quality);
+                UnityEngine.Object.Destroy(texture);
+
+                // Do base64 encoding on background thread to reduce main thread work
+                Task.Run(() =>
+                {
+                    string base64 = Convert.ToBase64String(jpegBytes);
+                    string dataUrl = $"data:image/jpeg;base64,{base64}";
+
+                    var result = new ScreenshotResult
+                    {
+                        Base64Data = dataUrl,
+                        Width = scaledWidth,
+                        Height = scaledHeight,
+                        OriginalWidth = screenWidth,
+                        OriginalHeight = screenHeight,
+                        Timestamp = timestamp
+                    };
+
+                    // Invoke callback (will be on background thread, caller must handle)
+                    onComplete?.Invoke(result);
+                });
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("Failed to process screenshot readback", ex);
+                onComplete?.Invoke(null);
+            }
         }
 
         /// <summary>
@@ -141,6 +204,26 @@ namespace PostHogUnity.SessionReplay
         public void ResetThrottle()
         {
             _lastCaptureTime = 0;
+        }
+
+        /// <summary>
+        /// Releases render texture resources.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_fullRT != null)
+            {
+                _fullRT.Release();
+                UnityEngine.Object.Destroy(_fullRT);
+                _fullRT = null;
+            }
+
+            if (_scaledRT != null)
+            {
+                _scaledRT.Release();
+                UnityEngine.Object.Destroy(_scaledRT);
+                _scaledRT = null;
+            }
         }
     }
 

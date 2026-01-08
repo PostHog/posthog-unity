@@ -109,6 +109,7 @@ namespace PostHogUnity.SessionReplay
             _consoleLogCapture?.Stop();
             _networkTelemetry?.Stop();
             _replayQueue.Stop();
+            _screenshotCapture?.Dispose();
 
             PostHogLogger.Info("Session replay stopped");
         }
@@ -272,7 +273,42 @@ namespace PostHogUnity.SessionReplay
 
         void CaptureAndEnqueueSnapshot()
         {
-            var result = _screenshotCapture.CaptureScreenshot();
+            // Collect auxiliary data BEFORE async capture (must be on main thread)
+            List<RREvent> touchEvents;
+            lock (_touchLock)
+            {
+                touchEvents = new List<RREvent>(_pendingTouchEvents);
+                _pendingTouchEvents.Clear();
+            }
+
+            List<NetworkSample> networkSamples = null;
+            if (_networkTelemetry != null)
+            {
+                networkSamples = _networkTelemetry.GetAndClearSamples();
+            }
+
+            List<LogEntry> logs = null;
+            if (_consoleLogCapture != null)
+            {
+                logs = _consoleLogCapture.GetAndClearLogs();
+            }
+
+            var screenName = _currentScreenName;
+
+            // Start async capture
+            _screenshotCapture.CaptureScreenshotAsync(result =>
+            {
+                OnScreenshotCaptured(result, touchEvents, networkSamples, logs, screenName);
+            });
+        }
+
+        void OnScreenshotCaptured(
+            ScreenshotResult result,
+            List<RREvent> touchEvents,
+            List<NetworkSample> networkSamples,
+            List<LogEntry> logs,
+            string screenName)
+        {
             if (result == null)
                 return;
 
@@ -282,7 +318,7 @@ namespace PostHogUnity.SessionReplay
             events.Add(RREvent.CreateMeta(
                 result.OriginalWidth,
                 result.OriginalHeight,
-                _currentScreenName,
+                screenName,
                 result.Timestamp
             ));
 
@@ -297,33 +333,21 @@ namespace PostHogUnity.SessionReplay
             events.Add(RREvent.CreateFullSnapshot(wireframe, result.Timestamp));
 
             // Add pending touch events
-            lock (_touchLock)
+            if (touchEvents != null && touchEvents.Count > 0)
             {
-                if (_pendingTouchEvents.Count > 0)
-                {
-                    events.AddRange(_pendingTouchEvents);
-                    _pendingTouchEvents.Clear();
-                }
+                events.AddRange(touchEvents);
             }
 
             // Add network telemetry
-            if (_networkTelemetry != null)
+            if (networkSamples != null && networkSamples.Count > 0)
             {
-                var networkSamples = _networkTelemetry.GetAndClearSamples();
-                if (networkSamples.Count > 0)
-                {
-                    events.Add(RREvent.CreateNetworkPlugin(networkSamples, result.Timestamp));
-                }
+                events.Add(RREvent.CreateNetworkPlugin(networkSamples, result.Timestamp));
             }
 
             // Add console logs
-            if (_consoleLogCapture != null)
+            if (logs != null && logs.Count > 0)
             {
-                var logs = _consoleLogCapture.GetAndClearLogs();
-                if (logs.Count > 0)
-                {
-                    events.Add(RREvent.CreateConsoleLogPlugin(logs, result.Timestamp));
-                }
+                events.Add(RREvent.CreateConsoleLogPlugin(logs, result.Timestamp));
             }
 
             _replayQueue.Enqueue(events);
