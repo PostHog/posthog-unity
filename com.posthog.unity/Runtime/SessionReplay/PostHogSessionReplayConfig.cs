@@ -142,6 +142,6 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Capture errors only.
         /// </summary>
-        Error = 2
+        Error = 2,
     }
 }

@@ -99,8 +99,8 @@ namespace PostHogUnity.SessionReplay
                 {
                     ["width"] = width,
                     ["height"] = height,
-                    ["href"] = screenName ?? ""
-                }
+                    ["href"] = screenName ?? "",
+                },
             };
         }
 
@@ -120,10 +120,10 @@ namespace PostHogUnity.SessionReplay
                     ["initialOffset"] = new Dictionary<string, object>
                     {
                         ["top"] = 0,
-                        ["left"] = 0
+                        ["left"] = 0,
                     },
-                    ["wireframes"] = wireframes
-                }
+                    ["wireframes"] = wireframes,
+                },
             };
         }
 
@@ -143,8 +143,8 @@ namespace PostHogUnity.SessionReplay
                     ["source"] = 2,
                     ["type"] = touchType,
                     ["x"] = (int)x,
-                    ["y"] = (int)y
-                }
+                    ["y"] = (int)y,
+                },
             };
         }
 
@@ -166,11 +166,8 @@ namespace PostHogUnity.SessionReplay
                 Data = new Dictionary<string, object>
                 {
                     ["plugin"] = "rrweb/network@1",
-                    ["payload"] = new Dictionary<string, object>
-                    {
-                        ["requests"] = requestDicts
-                    }
-                }
+                    ["payload"] = new Dictionary<string, object> { ["requests"] = requestDicts },
+                },
             };
         }
 
@@ -192,11 +189,8 @@ namespace PostHogUnity.SessionReplay
                 Data = new Dictionary<string, object>
                 {
                     ["plugin"] = "rrweb/console@1",
-                    ["payload"] = new Dictionary<string, object>
-                    {
-                        ["logs"] = logDicts
-                    }
-                }
+                    ["payload"] = new Dictionary<string, object> { ["logs"] = logDicts },
+                },
             };
         }
 
@@ -209,7 +203,7 @@ namespace PostHogUnity.SessionReplay
             {
                 ["type"] = Type,
                 ["data"] = Data,
-                ["timestamp"] = Timestamp
+                ["timestamp"] = Timestamp,
             };
         }
     }
@@ -274,7 +268,7 @@ namespace PostHogUnity.SessionReplay
                 Width = width,
                 Height = height,
                 Type = RRWireframeType.Screenshot,
-                Base64 = base64Data
+                Base64 = base64Data,
             };
         }
 
@@ -290,7 +284,7 @@ namespace PostHogUnity.SessionReplay
                 ["y"] = Y,
                 ["width"] = Width,
                 ["height"] = Height,
-                ["type"] = Type
+                ["type"] = Type,
             };
 
             if (!string.IsNullOrEmpty(Base64))
@@ -405,7 +399,7 @@ namespace PostHogUnity.SessionReplay
                 ["name"] = Name ?? "",
                 ["duration"] = Duration,
                 ["responseStatus"] = ResponseStatus,
-                ["transferSize"] = TransferSize
+                ["transferSize"] = TransferSize,
             };
         }
     }
@@ -444,7 +438,7 @@ namespace PostHogUnity.SessionReplay
             {
                 ["timestamp"] = Timestamp,
                 ["level"] = Level ?? "log",
-                ["payload"] = new List<string> { Message ?? "" }
+                ["payload"] = new List<string> { Message ?? "" },
             };
 
             if (!string.IsNullOrEmpty(StackTrace))

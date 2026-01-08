@@ -74,7 +74,10 @@ namespace PostHogUnity.SessionReplay
                 return;
 
             // Don't record PostHog's own requests
-            if (url != null && (url.Contains("/s/") || url.Contains("/batch") || url.Contains("/flags")))
+            if (
+                url != null
+                && (url.Contains("/s/") || url.Contains("/batch") || url.Contains("/flags"))
+            )
                 return;
 
             var sample = new NetworkSample
@@ -85,7 +88,7 @@ namespace PostHogUnity.SessionReplay
                 ResponseStatus = statusCode,
                 Duration = durationMs,
                 TransferSize = responseSize,
-                InitiatorType = initiatorType
+                InitiatorType = initiatorType,
             };
 
             lock (_lock)
@@ -129,8 +132,10 @@ namespace PostHogUnity.SessionReplay
                 var sanitized = $"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}";
 
                 // Optionally include port if non-standard
-                if ((uri.Scheme == "http" && uri.Port != 80) ||
-                    (uri.Scheme == "https" && uri.Port != 443))
+                if (
+                    (uri.Scheme == "http" && uri.Port != 80)
+                    || (uri.Scheme == "https" && uri.Port != 443)
+                )
                 {
                     sanitized = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
                 }

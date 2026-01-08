@@ -73,10 +73,24 @@ namespace PostHogUnity.SessionReplay
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
                 Graphics.Blit(_fullRT, _scaledRT);
 
-                AsyncGPUReadback.Request(_scaledRT, 0, TextureFormat.RGBA32, request =>
-                {
-                    OnReadbackComplete(request, scaledWidth, scaledHeight, screenWidth, screenHeight, timestamp, quality, onComplete);
-                });
+                AsyncGPUReadback.Request(
+                    _scaledRT,
+                    0,
+                    TextureFormat.RGBA32,
+                    request =>
+                    {
+                        OnReadbackComplete(
+                            request,
+                            scaledWidth,
+                            scaledHeight,
+                            screenWidth,
+                            screenHeight,
+                            timestamp,
+                            quality,
+                            onComplete
+                        );
+                    }
+                );
             }
             catch (Exception ex)
             {
@@ -86,9 +100,18 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        void EnsureRenderTextures(int screenWidth, int screenHeight, int scaledWidth, int scaledHeight)
+        void EnsureRenderTextures(
+            int screenWidth,
+            int screenHeight,
+            int scaledWidth,
+            int scaledHeight
+        )
         {
-            if (_fullRT == null || _lastScreenWidth != screenWidth || _lastScreenHeight != screenHeight)
+            if (
+                _fullRT == null
+                || _lastScreenWidth != screenWidth
+                || _lastScreenHeight != screenHeight
+            )
             {
                 if (_fullRT != null)
                 {
@@ -96,13 +119,22 @@ namespace PostHogUnity.SessionReplay
                     UnityEngine.Object.Destroy(_fullRT);
                 }
 
-                _fullRT = new RenderTexture(screenWidth, screenHeight, 0, RenderTextureFormat.ARGB32);
+                _fullRT = new RenderTexture(
+                    screenWidth,
+                    screenHeight,
+                    0,
+                    RenderTextureFormat.ARGB32
+                );
                 _fullRT.Create();
                 _lastScreenWidth = screenWidth;
                 _lastScreenHeight = screenHeight;
             }
 
-            if (_scaledRT == null || _lastScaledWidth != scaledWidth || _lastScaledHeight != scaledHeight)
+            if (
+                _scaledRT == null
+                || _lastScaledWidth != scaledWidth
+                || _lastScaledHeight != scaledHeight
+            )
             {
                 if (_scaledRT != null)
                 {
@@ -110,7 +142,12 @@ namespace PostHogUnity.SessionReplay
                     UnityEngine.Object.Destroy(_scaledRT);
                 }
 
-                _scaledRT = new RenderTexture(scaledWidth, scaledHeight, 0, RenderTextureFormat.ARGB32);
+                _scaledRT = new RenderTexture(
+                    scaledWidth,
+                    scaledHeight,
+                    0,
+                    RenderTextureFormat.ARGB32
+                );
                 _scaledRT.filterMode = FilterMode.Bilinear;
                 _scaledRT.Create();
                 _lastScaledWidth = scaledWidth;
@@ -126,7 +163,8 @@ namespace PostHogUnity.SessionReplay
             int screenHeight,
             long timestamp,
             int quality,
-            Action<ScreenshotResult> onComplete)
+            Action<ScreenshotResult> onComplete
+        )
         {
             _isCapturing = false;
 
@@ -161,7 +199,7 @@ namespace PostHogUnity.SessionReplay
                     Height = scaledHeight,
                     OriginalWidth = screenWidth,
                     OriginalHeight = screenHeight,
-                    Timestamp = timestamp
+                    Timestamp = timestamp,
                 };
 
                 onComplete?.Invoke(result);

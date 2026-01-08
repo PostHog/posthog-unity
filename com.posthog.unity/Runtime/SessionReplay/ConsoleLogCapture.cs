@@ -100,9 +100,10 @@ namespace PostHogUnity.SessionReplay
                 Timestamp = ScreenshotCapture.GetTimestampMs(),
                 Level = level,
                 Message = TruncateMessage(message),
-                StackTrace = logType == LogType.Exception || logType == LogType.Error
-                    ? TruncateStackTrace(stackTrace)
-                    : null
+                StackTrace =
+                    logType == LogType.Exception || logType == LogType.Error
+                        ? TruncateStackTrace(stackTrace)
+                        : null,
             };
 
             lock (_lock)
@@ -125,15 +126,15 @@ namespace PostHogUnity.SessionReplay
                     return true;
 
                 case SessionReplayLogLevel.Warning:
-                    return logType == LogType.Warning ||
-                           logType == LogType.Error ||
-                           logType == LogType.Exception ||
-                           logType == LogType.Assert;
+                    return logType == LogType.Warning
+                        || logType == LogType.Error
+                        || logType == LogType.Exception
+                        || logType == LogType.Assert;
 
                 case SessionReplayLogLevel.Error:
-                    return logType == LogType.Error ||
-                           logType == LogType.Exception ||
-                           logType == LogType.Assert;
+                    return logType == LogType.Error
+                        || logType == LogType.Exception
+                        || logType == LogType.Assert;
 
                 default:
                     return false;
@@ -163,9 +164,7 @@ namespace PostHogUnity.SessionReplay
                 return "";
 
             const int maxLength = 1000;
-            return message.Length > maxLength
-                ? message.Substring(0, maxLength) + "..."
-                : message;
+            return message.Length > maxLength ? message.Substring(0, maxLength) + "..." : message;
         }
 
         string TruncateStackTrace(string stackTrace)

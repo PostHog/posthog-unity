@@ -1034,7 +1034,13 @@ namespace PostHogUnity
             long responseSize = 0
         )
         {
-            NetworkTelemetryExtensions.RecordForReplay(method, url, statusCode, durationMs, responseSize);
+            NetworkTelemetryExtensions.RecordForReplay(
+                method,
+                url,
+                statusCode,
+                durationMs,
+                responseSize
+            );
         }
 
         #endregion

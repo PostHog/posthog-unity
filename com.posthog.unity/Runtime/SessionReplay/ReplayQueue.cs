@@ -92,7 +92,7 @@ namespace PostHogUnity.SessionReplay
                 Timestamp = DateTime.UtcNow.ToString("o"),
                 DistinctId = _getDistinctId(),
                 SessionId = sessionId,
-                SnapshotData = snapshotData
+                SnapshotData = snapshotData,
             };
 
             lock (_lock)
@@ -247,11 +247,14 @@ namespace PostHogUnity.SessionReplay
                     bool success = false;
                     int statusCode = 0;
 
-                    yield return SendBatch(batch, (result, code) =>
-                    {
-                        success = result;
-                        statusCode = code;
-                    });
+                    yield return SendBatch(
+                        batch,
+                        (result, code) =>
+                        {
+                            success = result;
+                            statusCode = code;
+                        }
+                    );
 
                     if (success)
                     {
@@ -322,10 +325,14 @@ namespace PostHogUnity.SessionReplay
                 compressedBytes = CompressGzip(bodyBytes);
             }
 
-            PostHogLogger.Debug($"Sending replay batch to {url} (size: {(useCompression ? compressedBytes.Length : bodyBytes.Length)} bytes)");
+            PostHogLogger.Debug(
+                $"Sending replay batch to {url} (size: {(useCompression ? compressedBytes.Length : bodyBytes.Length)} bytes)"
+            );
 
             using var request = new UnityWebRequest(url, "POST");
-            request.uploadHandler = new UploadHandlerRaw(useCompression ? compressedBytes : bodyBytes);
+            request.uploadHandler = new UploadHandlerRaw(
+                useCompression ? compressedBytes : bodyBytes
+            );
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Accept", "application/json");
@@ -348,7 +355,9 @@ namespace PostHogUnity.SessionReplay
             }
             else
             {
-                PostHogLogger.Warning($"Replay batch send failed: {request.error} (status: {statusCode})");
+                PostHogLogger.Warning(
+                    $"Replay batch send failed: {request.error} (status: {statusCode})"
+                );
                 onComplete?.Invoke(false, statusCode);
             }
         }
@@ -418,8 +427,8 @@ namespace PostHogUnity.SessionReplay
                     ["$window_id"] = SessionId, // Required for session replay
                     ["$snapshot_data"] = snapshotDataDicts,
                     ["$lib"] = SdkInfo.LibraryName,
-                    ["$lib_version"] = SdkInfo.Version
-                }
+                    ["$lib_version"] = SdkInfo.Version,
+                },
             };
         }
     }

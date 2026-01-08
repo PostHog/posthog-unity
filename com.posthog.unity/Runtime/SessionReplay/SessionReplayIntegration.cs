@@ -79,7 +79,9 @@ namespace PostHogUnity.SessionReplay
 
             if (!SystemInfo.supportsAsyncGPUReadback)
             {
-                PostHogLogger.Warning("Session replay disabled: AsyncGPUReadback not supported on this platform");
+                PostHogLogger.Warning(
+                    "Session replay disabled: AsyncGPUReadback not supported on this platform"
+                );
                 return;
             }
 
@@ -303,19 +305,22 @@ namespace PostHogUnity.SessionReplay
             List<RREvent> touchEvents,
             List<NetworkSample> networkSamples,
             List<LogEntry> logs,
-            string screenName)
+            string screenName
+        )
         {
             if (result == null)
                 return;
 
             var events = new List<RREvent>();
 
-            events.Add(RREvent.CreateMeta(
-                result.OriginalWidth,
-                result.OriginalHeight,
-                screenName,
-                result.Timestamp
-            ));
+            events.Add(
+                RREvent.CreateMeta(
+                    result.OriginalWidth,
+                    result.OriginalHeight,
+                    screenName,
+                    result.Timestamp
+                )
+            );
 
             var wireframe = RRWireframe.CreateScreenshot(
                 result.OriginalWidth,
@@ -348,7 +353,7 @@ namespace PostHogUnity.SessionReplay
             var timestamp = ScreenshotCapture.GetTimestampMs();
             var events = new List<RREvent>
             {
-                RREvent.CreateMeta(Screen.width, Screen.height, _currentScreenName, timestamp)
+                RREvent.CreateMeta(Screen.width, Screen.height, _currentScreenName, timestamp),
             };
             _replayQueue.Enqueue(events);
         }
@@ -379,9 +384,11 @@ namespace PostHogUnity.SessionReplay
             for (int i = 0; i < Input.touchCount; i++)
             {
                 var touch = Input.GetTouch(i);
-                if (touch.phase == TouchPhase.Began ||
-                    touch.phase == TouchPhase.Ended ||
-                    touch.phase == TouchPhase.Canceled)
+                if (
+                    touch.phase == TouchPhase.Began
+                    || touch.phase == TouchPhase.Ended
+                    || touch.phase == TouchPhase.Canceled
+                )
                 {
                     RecordTouch(touch.position, touch.phase);
                 }
