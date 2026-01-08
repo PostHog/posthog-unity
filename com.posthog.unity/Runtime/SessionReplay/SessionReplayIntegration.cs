@@ -317,12 +317,7 @@ namespace PostHogUnity.SessionReplay
             string screenName)
         {
             if (result == null)
-            {
-                PostHogLogger.Debug("SessionReplay: OnScreenshotCaptured received null result");
                 return;
-            }
-
-            PostHogLogger.Debug($"SessionReplay: OnScreenshotCaptured {result.OriginalWidth}x{result.OriginalHeight}, dataLen={result.Base64Data?.Length ?? 0}");
 
             var events = new List<RREvent>();
 

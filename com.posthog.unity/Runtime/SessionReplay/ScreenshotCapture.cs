@@ -127,7 +127,6 @@ namespace PostHogUnity.SessionReplay
                 _scaledRT.Create();
                 _lastScaledWidth = scaledWidth;
                 _lastScaledHeight = scaledHeight;
-                PostHogLogger.Debug($"ScreenshotCapture: Created scaledRT {scaledWidth}x{scaledHeight}");
             }
         }
 
@@ -161,6 +160,9 @@ namespace PostHogUnity.SessionReplay
                 texture.LoadRawTextureData(data);
                 texture.Apply();
 
+                // Flip texture vertically (Unity's RenderTexture origin is bottom-left, but images expect top-left)
+                FlipTextureVertically(texture);
+
                 // Encode to JPEG (must be on main thread due to Unity API)
                 byte[] jpegBytes = texture.EncodeToJPG(quality);
                 UnityEngine.Object.Destroy(texture);
@@ -186,6 +188,34 @@ namespace PostHogUnity.SessionReplay
                 PostHogLogger.Error("Failed to process screenshot readback", ex);
                 onComplete?.Invoke(null);
             }
+        }
+
+        /// <summary>
+        /// Flips a texture vertically in-place.
+        /// Required because Unity's RenderTexture has origin at bottom-left,
+        /// but standard image formats expect origin at top-left.
+        /// </summary>
+        void FlipTextureVertically(Texture2D texture)
+        {
+            var pixels = texture.GetPixels();
+            int width = texture.width;
+            int height = texture.height;
+
+            for (int y = 0; y < height / 2; y++)
+            {
+                int topRowStart = y * width;
+                int bottomRowStart = (height - 1 - y) * width;
+
+                for (int x = 0; x < width; x++)
+                {
+                    var temp = pixels[topRowStart + x];
+                    pixels[topRowStart + x] = pixels[bottomRowStart + x];
+                    pixels[bottomRowStart + x] = temp;
+                }
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply();
         }
 
         /// <summary>
