@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -43,7 +42,7 @@ namespace PostHogUnity.SessionReplay
 
         /// <summary>
         /// Captures a screenshot asynchronously using AsyncGPUReadback.
-        /// The callback is invoked on the main thread when capture completes.
+        /// Requires AsyncGPUReadback support (checked at session replay start).
         /// </summary>
         /// <param name="onComplete">Callback with the screenshot result, or null if capture failed.</param>
         public void CaptureScreenshotAsync(Action<ScreenshotResult> onComplete)
@@ -83,14 +82,15 @@ namespace PostHogUnity.SessionReplay
                 Graphics.Blit(_fullRT, _scaledRT);
 
                 // Request async readback from scaled render texture
-                AsyncGPUReadback.Request(_scaledRT, 0, TextureFormat.RGB24, request =>
+                // Use RGBA32 to match the RenderTexture format
+                AsyncGPUReadback.Request(_scaledRT, 0, TextureFormat.RGBA32, request =>
                 {
                     OnReadbackComplete(request, scaledWidth, scaledHeight, screenWidth, screenHeight, timestamp, quality, onComplete);
                 });
             }
             catch (Exception ex)
             {
-                PostHogLogger.Error("Failed to initiate screenshot capture", ex);
+                PostHogLogger.Error("Failed to capture screenshot", ex);
                 _isCapturing = false;
                 onComplete?.Invoke(null);
             }
@@ -127,6 +127,7 @@ namespace PostHogUnity.SessionReplay
                 _scaledRT.Create();
                 _lastScaledWidth = scaledWidth;
                 _lastScaledHeight = scaledHeight;
+                PostHogLogger.Debug($"ScreenshotCapture: Created scaledRT {scaledWidth}x{scaledHeight}");
             }
         }
 
@@ -155,7 +156,8 @@ namespace PostHogUnity.SessionReplay
                 var data = request.GetData<byte>();
 
                 // Create texture and load data (must be on main thread)
-                var texture = new Texture2D(scaledWidth, scaledHeight, TextureFormat.RGB24, false);
+                // Use RGBA32 to match the readback format
+                var texture = new Texture2D(scaledWidth, scaledHeight, TextureFormat.RGBA32, false);
                 texture.LoadRawTextureData(data);
                 texture.Apply();
 
@@ -163,25 +165,21 @@ namespace PostHogUnity.SessionReplay
                 byte[] jpegBytes = texture.EncodeToJPG(quality);
                 UnityEngine.Object.Destroy(texture);
 
-                // Do base64 encoding on background thread to reduce main thread work
-                Task.Run(() =>
+                // Base64 encoding
+                string base64 = Convert.ToBase64String(jpegBytes);
+                string dataUrl = $"data:image/jpeg;base64,{base64}";
+
+                var result = new ScreenshotResult
                 {
-                    string base64 = Convert.ToBase64String(jpegBytes);
-                    string dataUrl = $"data:image/jpeg;base64,{base64}";
+                    Base64Data = dataUrl,
+                    Width = scaledWidth,
+                    Height = scaledHeight,
+                    OriginalWidth = screenWidth,
+                    OriginalHeight = screenHeight,
+                    Timestamp = timestamp
+                };
 
-                    var result = new ScreenshotResult
-                    {
-                        Base64Data = dataUrl,
-                        Width = scaledWidth,
-                        Height = scaledHeight,
-                        OriginalWidth = screenWidth,
-                        OriginalHeight = screenHeight,
-                        Timestamp = timestamp
-                    };
-
-                    // Invoke callback (will be on background thread, caller must handle)
-                    onComplete?.Invoke(result);
-                });
+                onComplete?.Invoke(result);
             }
             catch (Exception ex)
             {

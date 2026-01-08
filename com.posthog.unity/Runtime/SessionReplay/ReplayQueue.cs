@@ -424,6 +424,7 @@ namespace PostHogUnity.SessionReplay
                 {
                     ["$snapshot_source"] = "mobile",
                     ["$session_id"] = SessionId,
+                    ["$window_id"] = SessionId, // Required for session replay
                     ["$snapshot_data"] = snapshotDataDicts,
                     ["$lib"] = SdkInfo.LibraryName,
                     ["$lib_version"] = SdkInfo.Version

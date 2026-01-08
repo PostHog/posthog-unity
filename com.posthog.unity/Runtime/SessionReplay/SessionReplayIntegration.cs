@@ -79,6 +79,13 @@ namespace PostHogUnity.SessionReplay
             if (_isRunning)
                 return;
 
+            // Check for AsyncGPUReadback support - required for session replay
+            if (!SystemInfo.supportsAsyncGPUReadback)
+            {
+                PostHogLogger.Warning("Session replay disabled: AsyncGPUReadback not supported on this platform");
+                return;
+            }
+
             _isRunning = true;
             _isPaused = false;
             _lastSessionId = _getSessionId();
@@ -310,7 +317,12 @@ namespace PostHogUnity.SessionReplay
             string screenName)
         {
             if (result == null)
+            {
+                PostHogLogger.Debug("SessionReplay: OnScreenshotCaptured received null result");
                 return;
+            }
+
+            PostHogLogger.Debug($"SessionReplay: OnScreenshotCaptured {result.OriginalWidth}x{result.OriginalHeight}, dataLen={result.Base64Data?.Length ?? 0}");
 
             var events = new List<RREvent>();
 
@@ -350,6 +362,7 @@ namespace PostHogUnity.SessionReplay
                 events.Add(RREvent.CreateConsoleLogPlugin(logs, result.Timestamp));
             }
 
+            PostHogLogger.Debug($"SessionReplay: Enqueueing {events.Count} events");
             _replayQueue.Enqueue(events);
         }
 
