@@ -287,9 +287,11 @@ namespace PostHogUnity.SessionReplay
             ));
 
             // Add screenshot wireframe
+            // Use original dimensions for the wireframe to match meta event
+            // The image data is scaled but the reported size should be the screen size
             var wireframe = RRWireframe.CreateScreenshot(
-                result.Width,
-                result.Height,
+                result.OriginalWidth,
+                result.OriginalHeight,
                 result.Base64Data
             );
             events.Add(RREvent.CreateFullSnapshot(wireframe, result.Timestamp));
