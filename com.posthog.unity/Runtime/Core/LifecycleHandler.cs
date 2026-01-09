@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,10 +18,13 @@ namespace PostHogUnity
         Action _onForeground;
         Action _onBackground;
         Action _onQuit;
+        Func<IEnumerator> _flushCoroutine;
 
         string _lastSeenVersion;
         string _lastSeenBuild;
         bool _wasBackgrounded;
+        bool _isQuitting;
+        bool _flushCompleted;
 
         public void Initialize(
             PostHogConfig config,
@@ -28,7 +32,8 @@ namespace PostHogUnity
             Action<string, Dictionary<string, object>> captureEvent,
             Action onForeground,
             Action onBackground,
-            Action onQuit
+            Action onQuit,
+            Func<IEnumerator> flushCoroutine = null
         )
         {
             _config = config;
@@ -37,9 +42,72 @@ namespace PostHogUnity
             _onForeground = onForeground;
             _onBackground = onBackground;
             _onQuit = onQuit;
+            _flushCoroutine = flushCoroutine;
+
+            if (config.FlushOnQuit && flushCoroutine != null)
+            {
+                Application.wantsToQuit += OnWantsToQuit;
+            }
 
             LoadState();
             CheckVersionChanges();
+        }
+
+        void OnDestroy()
+        {
+            Application.wantsToQuit -= OnWantsToQuit;
+        }
+
+        bool OnWantsToQuit()
+        {
+            if (_flushCompleted || _flushCoroutine == null)
+            {
+                return true;
+            }
+
+            if (_isQuitting)
+            {
+                return false;
+            }
+
+            _isQuitting = true;
+            PostHogLogger.Debug("Application wants to quit, performing final flush");
+            StartCoroutine(FlushAndQuitCoroutine());
+            return false;
+        }
+
+        IEnumerator FlushAndQuitCoroutine()
+        {
+            bool flushDone = false;
+            StartCoroutine(FlushThenSetFlag(() => flushDone = true));
+
+            float elapsed = 0f;
+            float timeout = _config.FlushOnQuitTimeoutSeconds;
+
+            while (!flushDone && elapsed < timeout)
+            {
+                yield return null;
+                elapsed += Time.unscaledDeltaTime;
+            }
+
+            if (!flushDone)
+            {
+                PostHogLogger.Warning($"Final flush timed out after {timeout}s");
+            }
+            else
+            {
+                PostHogLogger.Debug("Final flush completed");
+            }
+
+            _flushCompleted = true;
+            _onQuit?.Invoke();
+            Application.Quit();
+        }
+
+        IEnumerator FlushThenSetFlag(Action onComplete)
+        {
+            yield return _flushCoroutine();
+            onComplete?.Invoke();
         }
 
         void OnApplicationFocus(bool hasFocus)
@@ -69,7 +137,10 @@ namespace PostHogUnity
         void OnApplicationQuit()
         {
             PostHogLogger.Debug("Application quitting");
-            _onQuit?.Invoke();
+            if (!_config.FlushOnQuit || _flushCoroutine == null)
+            {
+                _onQuit?.Invoke();
+            }
         }
 
         void HandleForeground()

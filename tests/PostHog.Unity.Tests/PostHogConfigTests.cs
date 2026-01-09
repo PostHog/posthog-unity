@@ -20,6 +20,8 @@ namespace PostHogUnity.Tests
                 Assert.Equal(PersonProfiles.IdentifiedOnly, config.PersonProfiles);
                 Assert.Equal(PostHogLogLevel.Warning, config.LogLevel);
                 Assert.False(config.ReuseAnonymousId);
+                Assert.True(config.FlushOnQuit);
+                Assert.Equal(3f, config.FlushOnQuitTimeoutSeconds);
             }
         }
 

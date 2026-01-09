@@ -182,7 +182,7 @@ namespace PostHogUnity
             }
         }
 
-        IEnumerator FlushCoroutine()
+        public IEnumerator FlushCoroutine()
         {
             // Prevent concurrent flushes
             lock (_lock)

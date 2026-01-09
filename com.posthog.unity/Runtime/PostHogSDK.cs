@@ -162,7 +162,8 @@ namespace PostHogUnity
                 CaptureInternal,
                 OnAppForeground,
                 OnAppBackground,
-                OnAppQuit
+                OnAppQuit,
+                _eventQueue.FlushCoroutine
             );
 
             // Load super properties
