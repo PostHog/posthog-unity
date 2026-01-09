@@ -1,4 +1,5 @@
 using System;
+using PostHogUnity.SessionReplay;
 
 namespace PostHogUnity
 {
@@ -146,6 +147,23 @@ namespace PostHogUnity
 
         #endregion
 
+        #region Session Replay
+
+        /// <summary>
+        /// Whether to enable session replay.
+        /// When enabled, screenshots are captured and sent to PostHog for replay.
+        /// Defaults to false.
+        /// </summary>
+        public bool SessionReplay { get; set; } = false;
+
+        /// <summary>
+        /// Configuration options for session replay.
+        /// Only used when SessionReplay is true.
+        /// </summary>
+        public PostHogSessionReplayConfig SessionReplayConfig { get; set; } = new();
+
+        #endregion
+
         /// <summary>
         /// Validates the configuration and throws if invalid.
         /// </summary>
@@ -191,6 +209,12 @@ namespace PostHogUnity
                     nameof(MaxBatchSize),
                     "MaxBatchSize must be at least 1"
                 );
+            }
+
+            // Validate session replay config if enabled
+            if (SessionReplay)
+            {
+                SessionReplayConfig?.Validate();
             }
         }
     }

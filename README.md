@@ -61,6 +61,7 @@ PostHog.Setup(new PostHogConfig
     MaxBatchSize = 50,                      // Max events per request
     CaptureApplicationLifecycleEvents = true,
     CaptureExceptions = true,               // Auto-capture unhandled exceptions
+    SessionReplay = false,                  // Enable session replay (experimental)
     PersonProfiles = PersonProfiles.IdentifiedOnly,
     LogLevel = PostHogLogLevel.Warning
 });
@@ -305,6 +306,54 @@ PostHog.Setup(new PostHogConfig
     CaptureExceptions = false  // Disable automatic exception capture
 });
 ```
+
+## Session Replay (Experimental)
+
+> **Note:** Session replay is an experimental feature of this beta SDK. Performance impact varies significantly depending on your target devices and game complexity. You may need to adjust capture settings (screenshot scale, quality, throttle delay) to find the right balance for your users. We welcome your feedback—please [open an issue](https://github.com/PostHog/posthog-unity/issues) or reach out if you encounter problems or need help tuning for your use case.
+
+Record user sessions for replay in PostHog. Session replay captures screenshots of your game at regular intervals along with console logs and network telemetry.
+
+```csharp
+PostHog.Setup(new PostHogConfig
+{
+    ApiKey = "phc_...",
+    SessionReplay = true  // Enable session replay
+});
+```
+
+### Configuration
+
+```csharp
+PostHog.Setup(new PostHogConfig
+{
+    ApiKey = "phc_...",
+    SessionReplay = true,
+    SessionReplayConfig = new PostHogSessionReplayConfig
+    {
+        // Capture settings
+        ThrottleDelaySeconds = 1.0f,     // Min seconds between screenshots (default: 1.0)
+        ScreenshotQuality = 80,          // JPEG quality 1-100 (default: 80)
+        ScreenshotScale = 0.75f,         // Resolution scale 0.1-1.0 (default: 0.75)
+
+        // Telemetry
+        CaptureNetworkTelemetry = true,  // Record HTTP request metadata (default: true)
+        CaptureLogs = false,             // Record console logs (default: false)
+        MinLogLevel = SessionReplayLogLevel.Error,  // Log, Warning, or Error
+
+        // Queue settings
+        FlushAt = 20,                    // Events before auto-flush (default: 20)
+        FlushIntervalSeconds = 30,       // Seconds between flushes (default: 30)
+        MaxQueueSize = 100               // Max queued events (default: 100)
+    }
+});
+```
+
+### Performance Considerations
+
+- Screenshots are captured using async GPU readback to minimize main thread blocking
+- Use `ScreenshotScale` to reduce resolution and bandwidth
+- Increase `ThrottleDelaySeconds` if you experience performance issues
+- Lower `ScreenshotQuality` to reduce file size
 
 ## Platform Support
 

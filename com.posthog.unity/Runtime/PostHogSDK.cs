@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using PostHogUnity.ErrorTracking;
+using PostHogUnity.SessionReplay;
 using UnityEngine;
 
 namespace PostHogUnity
@@ -30,6 +31,7 @@ namespace PostHogUnity
         LifecycleHandler _lifecycleHandler;
         FeatureFlagManager _featureFlagManager;
         ExceptionManager _exceptionManager;
+        SessionReplayIntegration _sessionReplayIntegration;
         Dictionary<string, object> _superProperties;
         bool _optedOut;
 
@@ -180,6 +182,42 @@ namespace PostHogUnity
 
             // Initialize exception tracking
             InitializeExceptionTracking();
+
+            // Initialize session replay
+            InitializeSessionReplay();
+        }
+
+        void InitializeSessionReplay()
+        {
+            if (!_config.SessionReplay)
+            {
+                PostHogLogger.Debug("Session replay disabled");
+                return;
+            }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            PostHogLogger.Warning("Session replay is not supported on WebGL");
+            return;
+#endif
+
+            _sessionReplayIntegration = gameObject.AddComponent<SessionReplayIntegration>();
+            _sessionReplayIntegration.Initialize(
+                _config.SessionReplayConfig,
+                _config.ApiKey,
+                _config.Host,
+                () => _sessionManager.SessionId,
+                () => _identityManager.DistinctId,
+                OnSessionReplayRotate
+            );
+            _sessionReplayIntegration.Start();
+
+            PostHogLogger.Info("Session replay initialized");
+        }
+
+        void OnSessionReplayRotate()
+        {
+            // Called when session replay detects a session rotation
+            PostHogLogger.Debug("Session replay detected session rotation");
         }
 
         void InitializeExceptionTracking()
@@ -201,6 +239,9 @@ namespace PostHogUnity
 
         void ShutdownInternal()
         {
+            // Stop session replay
+            _sessionReplayIntegration?.Stop();
+
             // Stop exception tracking
             _exceptionManager?.Stop();
 
@@ -254,6 +295,9 @@ namespace PostHogUnity
             props["$screen_name"] = screenName;
 
             _instance.CaptureInternal("$screen", props);
+
+            // Update session replay screen name
+            _instance._sessionReplayIntegration?.SetScreenName(screenName);
         }
 
         /// <summary>
@@ -722,6 +766,8 @@ namespace PostHogUnity
                 return;
             _instance._optedOut = true;
             _instance._eventQueue.Clear();
+            _instance._sessionReplayIntegration?.Stop();
+            _instance._sessionReplayIntegration?.Clear();
             PostHogLogger.Info("Opted out of tracking");
         }
 
@@ -733,6 +779,10 @@ namespace PostHogUnity
             if (!EnsureInitialized())
                 return;
             _instance._optedOut = false;
+            if (_instance._config.SessionReplay)
+            {
+                _instance._sessionReplayIntegration?.Start();
+            }
             PostHogLogger.Info("Opted in to tracking");
         }
 
@@ -932,16 +982,81 @@ namespace PostHogUnity
 
         #endregion
 
+        #region Session Replay
+
+        /// <summary>
+        /// Returns true if session replay is currently active.
+        /// </summary>
+        public static bool IsSessionReplayActive
+        {
+            get
+            {
+                if (!EnsureInitialized())
+                    return false;
+                return _instance._sessionReplayIntegration?.IsActive ?? false;
+            }
+        }
+
+        /// <summary>
+        /// Starts session replay if it was configured but not yet started.
+        /// </summary>
+        public static void StartSessionReplay()
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._sessionReplayIntegration?.Start();
+        }
+
+        /// <summary>
+        /// Stops session replay.
+        /// </summary>
+        public static void StopSessionReplay()
+        {
+            if (!EnsureInitialized())
+                return;
+            _instance._sessionReplayIntegration?.Stop();
+        }
+
+        /// <summary>
+        /// Records a network request for session replay telemetry.
+        /// Call this after each HTTP request completes to include it in the replay.
+        /// </summary>
+        /// <param name="method">HTTP method (GET, POST, etc.)</param>
+        /// <param name="url">Request URL</param>
+        /// <param name="statusCode">HTTP response status code</param>
+        /// <param name="durationMs">Request duration in milliseconds</param>
+        /// <param name="responseSize">Response body size in bytes (optional)</param>
+        public static void RecordNetworkRequest(
+            string method,
+            string url,
+            int statusCode,
+            long durationMs,
+            long responseSize = 0
+        )
+        {
+            NetworkTelemetryExtensions.RecordForReplay(
+                method,
+                url,
+                statusCode,
+                durationMs,
+                responseSize
+            );
+        }
+
+        #endregion
+
         #region Lifecycle Callbacks
 
         void OnAppForeground()
         {
             _sessionManager.OnForeground();
+            _sessionReplayIntegration?.Resume();
         }
 
         void OnAppBackground()
         {
             _sessionManager.OnBackground();
+            _sessionReplayIntegration?.Pause();
             _eventQueue.Flush();
 
             // Synchronously flush pending file writes before backgrounding
