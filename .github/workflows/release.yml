@@ -42,14 +42,18 @@ jobs:
 
       - name: Determine and validate version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ inputs.version }}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$INPUT_VERSION"
           else
             # Extract version from branch name (release/v0.1.0 -> 0.1.0)
-            BRANCH="${{ github.event.pull_request.head.ref }}"
+            BRANCH="$PR_BRANCH"
 
             # Validate branch name format BEFORE extraction to prevent command injection
             if [[ ! "$BRANCH" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
