@@ -24,12 +24,7 @@
         "type": "git",
         "url": "https://github.com/PostHog/posthog-unity.git"
     },
-    "dependencies": {
-        "com.unity.modules.unitywebrequest": "1.0.0",
-        "com.unity.modules.jsonserialize": "1.0.0",
-        "com.unity.modules.imageconversion": "1.0.0",
-        "com.unity.modules.screencapture": "1.0.0"
-    },
+    "dependencies": {},
     "samples": [
         {
             "displayName": "Basic Usage",
