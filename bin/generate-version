@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #/ Usage: bin/generate-version
-#/ Description: Generates SdkInfo.Generated.cs from package.json version.
+#/ Description: Generates SdkInfo.Generated.cs from com.posthog.unity/package.json version.
 set -euo pipefail
 source bin/helpers/_utils.sh
 set_source_and_root_dir
@@ -8,16 +8,16 @@ set_source_and_root_dir
 PACKAGE_JSON="com.posthog.unity/package.json"
 VERSION_FILE="com.posthog.unity/Runtime/Utilities/SdkInfo.Generated.cs"
 
-if ! command -v jq &> /dev/null; then
-    fatal "jq is required but not installed. Run bin/bootstrap to install dependencies."
+if ! command -v node &> /dev/null; then
+    fatal "node is required but not installed."
 fi
 
 if [[ ! -f "$PACKAGE_JSON" ]]; then
     fatal "package.json not found at $PACKAGE_JSON"
 fi
 
-version=$(jq -r '.version' "$PACKAGE_JSON")
-if [[ -z "$version" || "$version" == "null" ]]; then
+version=$(node -p "require('./$PACKAGE_JSON').version")
+if [[ -z "$version" || "$version" == "undefined" ]]; then
     fatal "Could not read version from $PACKAGE_JSON"
 fi
 
