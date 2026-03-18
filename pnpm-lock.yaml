@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  com.unity.modules.unitywebrequest: npm:empty-npm-package@1.0.0
+  com.unity.modules.jsonserialize: npm:empty-npm-package@1.0.0
+  com.unity.modules.imageconversion: npm:empty-npm-package@1.0.0
+  com.unity.modules.screencapture: npm:empty-npm-package@1.0.0
+
 importers:
 
   .:
@@ -11,6 +17,21 @@ importers:
       '@changesets/cli':
         specifier: ^2.29.4
         version: 2.30.0
+
+  com.posthog.unity:
+    dependencies:
+      com.unity.modules.imageconversion:
+        specifier: npm:empty-npm-package@1.0.0
+        version: empty-npm-package@1.0.0
+      com.unity.modules.jsonserialize:
+        specifier: npm:empty-npm-package@1.0.0
+        version: empty-npm-package@1.0.0
+      com.unity.modules.screencapture:
+        specifier: npm:empty-npm-package@1.0.0
+        version: empty-npm-package@1.0.0
+      com.unity.modules.unitywebrequest:
+        specifier: npm:empty-npm-package@1.0.0
+        version: empty-npm-package@1.0.0
 
 packages:
 
@@ -143,6 +164,9 @@ packages:
   dir-glob@3.0.1:
     resolution: {integrity: sha512-WkrWp9GR4KXfKGYzOLmTuGVi1UWFfws377n9cc55/tb6DuqyF6pcQ5AbiHEshaDpY9v6oaSr2XCDidGmMwdzIA==}
     engines: {node: '>=8'}
+
+  empty-npm-package@1.0.0:
+    resolution: {integrity: sha512-q4Mq/+XO7UNDdMiPpR/LIBIW1Zl4V0Z6UT9aKGqIAnBCtCb3lvZJM1KbDbdzdC8fKflwflModfjR29Nt0EpcwA==}
 
   enquirer@2.4.1:
     resolution: {integrity: sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==}
@@ -600,6 +624,8 @@ snapshots:
   dir-glob@3.0.1:
     dependencies:
       path-type: 4.0.0
+
+  empty-npm-package@1.0.0: {}
 
   enquirer@2.4.1:
     dependencies:

@@ -1,6 +1,6 @@
 {
-  "name": "com.posthog.unity",
-  "version": "0.1.1",
+  "name": "posthog-unity-monorepo",
+  "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "scripts": {
@@ -8,5 +8,13 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "com.unity.modules.unitywebrequest": "npm:empty-npm-package@1.0.0",
+      "com.unity.modules.jsonserialize": "npm:empty-npm-package@1.0.0",
+      "com.unity.modules.imageconversion": "npm:empty-npm-package@1.0.0",
+      "com.unity.modules.screencapture": "npm:empty-npm-package@1.0.0"
+    }
   }
 }

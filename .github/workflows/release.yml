@@ -53,7 +53,7 @@ jobs:
 
       - name: Checkout repository
         if: github.event_name == 'workflow_dispatch' || steps.check-label.outputs.has-release-label == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
@@ -115,7 +115,7 @@ jobs:
           private-key: ${{ secrets.GH_APP_POSTHOG_UNITY_RELEASER_PRIVATE_KEY }}
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
@@ -130,7 +130,7 @@ jobs:
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: "pnpm"
@@ -142,7 +142,7 @@ jobs:
         id: apply-changesets
         run: |
           pnpm changeset version
-          NEW_VERSION=$(node -p "require('./package.json').version")
+          NEW_VERSION=$(node -p "require('./com.posthog.unity/package.json').version")
           echo "new-version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "New version: $NEW_VERSION"
 
@@ -183,7 +183,7 @@ jobs:
           NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
         run: |
           # Extract the latest changelog entry (content between first and second ## header)
-          LAST_CHANGELOG_ENTRY=$(awk -v defText="see CHANGELOG.md" '/^## /{if (flag) exit; flag=1; next} flag; END{if (!flag) print defText}' CHANGELOG.md)
+          LAST_CHANGELOG_ENTRY=$(awk -v defText="see CHANGELOG.md" '/^## /{if (flag) exit; flag=1; next} flag; END{if (!flag) print defText}' com.posthog.unity/CHANGELOG.md)
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \
@@ -255,7 +255,7 @@ jobs:
     if: always() && needs.version-bump.result == 'success' && needs.notify-approval-needed.outputs.slack_ts != ''
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Notify Slack - Released
         uses: PostHog/.github/.github/actions/slack-thread-reply@main
