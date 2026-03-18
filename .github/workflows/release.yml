@@ -1,161 +1,267 @@
-name: Release
+name: "Release"
 
 on:
-  # Auto-trigger when release PRs are merged
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
-
-  # Manual trigger for exceptional cases
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.1.0) - must match package.json'
-        required: true
-        type: string
-      dry_run:
-        description: 'Dry run (skip tag and release creation)'
-        required: false
-        type: boolean
-        default: false
-
-env:
-  PACKAGE_PATH: com.posthog.unity/package.json
 
 permissions:
-  # Required for creating git tags (git push origin) and GitHub releases (gh release create)
-  contents: write
+  contents: read
+
+# Concurrency control: only one release process can run at a time
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    # Run if: manual trigger OR (PR merged AND from release branch)
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+  check-changesets:
+    name: Check for changesets
     runs-on: ubuntu-latest
+    # Run when a push to main comes from a merged PR with the 'release' label, or when manually triggered
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    outputs:
+      has-changesets: ${{ steps.check.outputs.has-changesets }}
     steps:
-      - name: Checkout
+      - name: Check for release label on merged PR
+        if: github.event_name == 'push'
+        id: check-label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Find the PR associated with this merge commit
+          COMMIT_SHA="${{ github.sha }}"
+          PR_NUMBER=$(gh api "/repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" --jq '.[0].number // empty')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR found for commit ${COMMIT_SHA}. Skipping release."
+            echo "has-release-label=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found PR #${PR_NUMBER} for commit ${COMMIT_SHA}"
+
+          # Check if the PR has the 'release' label
+          HAS_LABEL=$(gh api "/repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" --jq '[.[] | select(.name == "release")] | length')
+
+          if [ "$HAS_LABEL" -gt 0 ]; then
+            echo "✓ PR #${PR_NUMBER} has the 'release' label"
+            echo "has-release-label=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR #${PR_NUMBER} does not have the 'release' label. Skipping release."
+            echo "has-release-label=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: github.event_name == 'workflow_dispatch' || steps.check-label.outputs.has-release-label == 'true'
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
-      - name: Determine and validate version
-        id: version
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION: ${{ inputs.version }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+      - name: Check for changesets
+        id: check
+        if: github.event_name == 'workflow_dispatch' || steps.check-label.outputs.has-release-label == 'true'
         run: |
-          set -euo pipefail
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            VERSION="$INPUT_VERSION"
+          if [ ! -d ".changeset" ] || [ -z "$(ls -A .changeset/*.md 2>/dev/null | grep -v README.md)" ]; then
+            echo "❌ No changesets found. Cannot proceed with release."
+            echo "Please ensure your PR includes a changeset file."
+            echo "has-changesets=false" >> "$GITHUB_OUTPUT"
           else
-            # Extract version from branch name (release/v0.1.0 -> 0.1.0)
-            BRANCH="$PR_BRANCH"
+            echo "✓ Found changesets to process"
+            echo "has-changesets=true" >> "$GITHUB_OUTPUT"
+          fi
 
-            # Validate branch name format BEFORE extraction to prevent command injection
-            if [[ ! "$BRANCH" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
-              echo "::error::Invalid branch name format: $BRANCH"
-              echo "Expected format: release/vX.Y.Z or release/vX.Y.Z-suffix"
-              exit 1
+  notify-approval-needed:
+    name: Notify Slack - Approval Needed
+    needs: check-changesets
+    if: needs.check-changesets.outputs.has-changesets == 'true'
+    uses: PostHog/.github/.github/workflows/notify-approval-needed.yml@main
+    with:
+      slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
+      slack_user_group_id: ${{ vars.GROUP_CLIENT_LIBRARIES_SLACK_GROUP_ID }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
+      posthog_project_api_key: ${{ secrets.POSTHOG_PROJECT_API_KEY }}
+
+  version-bump:
+    name: Bump version, commit, and tag
+    needs: [check-changesets, notify-approval-needed]
+    runs-on: ubuntu-latest
+    # Use `always()` to ensure the job runs even if the notify-approval-needed job fails
+    if: always() && needs.check-changesets.outputs.has-changesets == 'true'
+    environment: "Release" # Requires approval from a maintainer
+    permissions:
+      contents: write
+    outputs:
+      committed: ${{ steps.commit-version-bump.outputs.committed }}
+      new-version: ${{ steps.apply-changesets.outputs.new-version }}
+    steps:
+      - name: Notify Slack - Approved
+        continue-on-error: true
+        if: needs.notify-approval-needed.outputs.slack_ts != ''
+        uses: PostHog/.github/.github/actions/slack-thread-reply@main
+        with:
+          slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
+          slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
+          thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
+          message: "✅ Release approved! Version bump in progress..."
+          emoji_reaction: "white_check_mark"
+
+      - name: Get GitHub App token
+        id: releaser
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GH_APP_POSTHOG_UNITY_RELEASER_APP_ID }}
+          private-key: ${{ secrets.GH_APP_POSTHOG_UNITY_RELEASER_PRIVATE_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.releaser.outputs.token }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply changesets and update version
+        id: apply-changesets
+        run: |
+          pnpm changeset version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new-version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW_VERSION"
+
+      - name: Sync version to all platform files
+        env:
+          NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
+        run: ./scripts/bump-version.sh "$NEW_VERSION"
+
+      - name: Commit version bump
+        id: commit-version-bump
+        env:
+          GITHUB_TOKEN: ${{ steps.releaser.outputs.token }}
+          NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "chore: release $NEW_VERSION [version bump]"
+            git push origin main
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag and push
+        if: steps.commit-version-bump.outputs.committed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.releaser.outputs.token }}
+          NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
+        run: |
+          git tag -a "v$NEW_VERSION" -m "v$NEW_VERSION"
+          git push origin "v$NEW_VERSION"
+
+      - name: Create GitHub Release
+        if: steps.commit-version-bump.outputs.committed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.releaser.outputs.token }}
+          NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
+        run: |
+          # Extract the latest changelog entry (content between first and second ## header)
+          LAST_CHANGELOG_ENTRY=$(awk -v defText="see CHANGELOG.md" '/^## /{if (flag) exit; flag=1; next} flag; END{if (!flag) print defText}' CHANGELOG.md)
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/releases \
+            -f tag_name="v$NEW_VERSION" \
+            -f target_commitish='main' \
+            -f name="v$NEW_VERSION" \
+            -f body="$LAST_CHANGELOG_ENTRY" \
+            -F draft=false \
+            -F prerelease=false \
+            -F generate_release_notes=false
+
+      - name: Notify Slack - Failed
+        continue-on-error: true
+        if: ${{ failure() && needs.notify-approval-needed.outputs.slack_ts != '' }}
+        uses: PostHog/.github/.github/actions/slack-thread-reply@main
+        with:
+          slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
+          slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
+          thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
+          message: "❌ Failed to release `posthog-unity@v${{ steps.apply-changesets.outputs.new-version }}`! <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+          emoji_reaction: "x"
+
+  notify-rejected:
+    name: Notify Slack - Rejected
+    needs: [version-bump, notify-approval-needed]
+    runs-on: ubuntu-latest
+    if: always() && needs.version-bump.result == 'failure' && needs.notify-approval-needed.outputs.slack_ts != ''
+    steps:
+      - name: Check for rejection
+        id: check-rejection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RESPONSE=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals)
+          REJECTED=$(echo "$RESPONSE" | jq '[.[] | select(.state == "rejected")] | length')
+          if [ "$REJECTED" -gt 0 ]; then
+            echo "was_rejected=true" >> "$GITHUB_OUTPUT"
+            COMMENT=$(echo "$RESPONSE" | jq -r '.[] | select(.state == "rejected") | .comment // empty' | head -1)
+            if [ -n "$COMMENT" ]; then
+              {
+                echo 'message<<EOF'
+                echo "🚫 Release was rejected: $COMMENT"
+                echo 'EOF'
+              } >> "$GITHUB_OUTPUT"
+            else
+              echo "message=🚫 Release was rejected." >> "$GITHUB_OUTPUT"
             fi
-
-            VERSION="${BRANCH#release/v}"
-          fi
-
-          # Validate version format (defense in depth)
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
-            echo "::error::Invalid version format: $VERSION"
-            echo "Version must be in semver format (e.g., 0.1.0 or 1.0.0-preview.1)"
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing version: $VERSION"
-
-      - name: Check version matches package.json
-        run: |
-          set -euo pipefail
-
-          PACKAGE_VERSION=$(jq -r '.version' "${{ env.PACKAGE_PATH }}")
-          INPUT_VERSION="${{ steps.version.outputs.version }}"
-
-          if [[ "$PACKAGE_VERSION" != "$INPUT_VERSION" ]]; then
-            echo "::error::Version mismatch!"
-            echo "package.json version: $PACKAGE_VERSION"
-            echo "Expected version: $INPUT_VERSION"
-            exit 1
-          fi
-
-          echo "✓ Version $INPUT_VERSION matches package.json"
-
-      - name: Check tag doesn't already exist
-        run: |
-          set -euo pipefail
-
-          TAG="v${{ steps.version.outputs.version }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag $TAG already exists!"
-            exit 1
-          fi
-          echo "✓ Tag $TAG is available"
-
-      - name: Create tag and release
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          TAG="v${{ steps.version.outputs.version }}"
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-
-          # Create and push tag
-          git tag "$TAG"
-          git push origin "$TAG"
-
-          # Create GitHub release with auto-generated notes
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes \
-              --notes-start-tag "$PREVIOUS_TAG"
           else
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes
+            echo "was_rejected=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "✓ Created release $TAG"
+      - name: Notify Slack - Rejected
+        if: steps.check-rejection.outputs.was_rejected == 'true'
+        continue-on-error: true
+        uses: PostHog/.github/.github/actions/slack-thread-reply@main
+        with:
+          slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
+          slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
+          thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
+          message: "${{ steps.check-rejection.outputs.message }}"
+          emoji_reaction: "no_entry_sign"
 
-      - name: Dry run summary
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
+  notify-released:
+    name: Notify Slack - Released
+    needs: [check-changesets, notify-approval-needed, version-bump]
+    runs-on: ubuntu-latest
+    if: always() && needs.version-bump.result == 'success' && needs.notify-approval-needed.outputs.slack_ts != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-          TAG="v${{ steps.version.outputs.version }}"
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-
-          echo "::notice::Dry run completed successfully!"
-          echo ""
-          echo "Would create:"
-          echo "  - Tag: $TAG"
-          echo "  - GitHub Release with auto-generated notes"
-          echo ""
-          echo "Preview of release notes:"
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            gh api repos/${{ github.repository }}/releases/generate-notes \
-              -f tag_name="$TAG" \
-              -f target_commitish="${{ github.sha }}" \
-              -f previous_tag_name="$PREVIOUS_TAG" \
-              --jq '.body' || echo "(Could not generate preview)"
-          else
-            gh api repos/${{ github.repository }}/releases/generate-notes \
-              -f tag_name="$TAG" \
-              -f target_commitish="${{ github.sha }}" \
-              --jq '.body' || echo "(Could not generate preview - first release)"
-          fi
+      - name: Notify Slack - Released
+        uses: PostHog/.github/.github/actions/slack-thread-reply@main
+        with:
+          slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
+          slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
+          thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
+          message: "🚀 posthog-unity released successfully!"
+          emoji_reaction: "rocket"

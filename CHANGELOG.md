@@ -1,13 +1,8 @@
 # Changelog
 
-All notable changes to the PostHog Unity SDK will be documented in this file.
+## 0.1.0
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## Next
-
-### Added
+### Minor Changes
 
 - **Event Capture**: Capture custom events with properties
 - **Screen Tracking**: Track screen/scene views
@@ -34,17 +29,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Test Connection button in editor
 - **Storage**: File-based persistence (PlayerPrefs fallback for WebGL)
 - **Async Operations**: Non-blocking file writes and network requests
-
-### Platform Support
-
-- Windows, macOS, Linux: Full support
-- iOS, Android: Full support
-- WebGL: Supported with limitations (PlayerPrefs storage, CORS restrictions)
-- Consoles: Untested
-
-### Performance
-
-- Pre-allocated dictionaries to reduce GC allocations
-- Async file I/O to avoid blocking the main thread
-- Efficient LRU cache for feature flags
-- Batch event sending with configurable thresholds
+- **Platform Support**: Windows, macOS, Linux, iOS, Android, WebGL (with limitations)
+- **Performance**: Pre-allocated dictionaries, async file I/O, LRU cache for feature flags, batch event sending

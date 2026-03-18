@@ -4,96 +4,69 @@ This document describes how to release a new version of the PostHog Unity SDK.
 
 ## Overview
 
-Releases follow a PR-based workflow:
+Releases use [changesets](https://github.com/changesets/changesets) for version management and changelog generation:
 
-1. Run `bin/release` to create a release PR
-2. Review and merge the PR
-3. GitHub Actions automatically creates the tag and release
+1. Add a changeset to your PR describing the change
+2. Add the `release` label to the PR
+3. Merge the PR — GitHub Actions handles the rest
 
 ## Prerequisites
 
-- Write access to the repository
-- [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth login`)
-- [jq](https://jqlang.github.io/jq/) installed (`brew install jq`)
+- [Node.js](https://nodejs.org/) (see `.nvmrc` for version)
+- [pnpm](https://pnpm.io/) installed (`npm install -g pnpm`)
 
-Run `bin/bootstrap` to install dependencies.
+Run `pnpm install` to install dependencies.
 
-## Release Process
+## Adding a Changeset
 
-### 1. Create a release PR
-
-```bash
-bin/release
-```
-
-The script will:
-
-1. Prompt for the bump type (patch, minor, or major)
-2. Create a `release/vX.Y.Z` branch from `main`
-3. Update `package.json` and generate `SdkInfo.Generated.cs`
-4. Update `CHANGELOG.md` (replaces `## Next` with the version and date)
-5. Push and create a PR
-
-You can also specify the bump type directly:
+When you make a change that should be included in the next release, add a changeset:
 
 ```bash
-bin/release patch  # 0.1.0 -> 0.1.1
-bin/release minor  # 0.1.0 -> 0.2.0
-bin/release major  # 0.1.0 -> 1.0.0
+pnpm changeset
 ```
 
-### 2. Review and merge
+This will prompt you to:
 
-Review the PR to ensure:
+1. Select the package(s) affected (`com.posthog.unity`)
+2. Choose the semver bump type (patch/minor/major)
+3. Write a summary of the change
 
-- Version bump is correct
-- CI checks pass
-- Ready to release
+The changeset file is created in `.changeset/` and should be committed with your PR.
 
-Merge the PR when ready.
-
-### 3. Automatic release
-
-When the PR is merged, GitHub Actions automatically:
-
-- Creates tag `vX.Y.Z`
-- Creates a GitHub Release with auto-generated notes
-
-## Maintaining the Changelog
-
-The `CHANGELOG.md` file uses a `## Next` section for unreleased changes. When making changes:
-
-1. Add your changes under `## Next` in the appropriate category (`### Added`, `### Changed`, `### Fixed`, etc.)
-2. When `bin/release` runs, it automatically replaces `## Next` with the version number and date
-
-If `## Next` is missing when you run `bin/release`, you'll get a warning and need to update the changelog manually.
-
-## Version Guidelines
+### Version Guidelines
 
 Follow [Semantic Versioning](https://semver.org/):
 
-- **PATCH** (0.0.1): Bug fixes, backwards compatible
-- **MINOR** (0.1.0): New features, backwards compatible
-- **MAJOR** (1.0.0): Breaking changes
+- **patch**: Bug fixes, backwards compatible
+- **minor**: New features, backwards compatible
+- **major**: Breaking changes
 
-Pre-release versions can use suffixes like `1.0.0-preview.1`.
+## Release Process
 
-## Canceling a Release
+### 1. Create your PR with a changeset
 
-To cancel a release before merging:
+Include a changeset file in your PR (created via `pnpm changeset`).
 
-```bash
-gh pr close release/vX.Y.Z --delete-branch
-```
+### 2. Add the `release` label
 
-## Manual Release (Exceptional Cases)
+Add the `release` label to the PR before or after merging.
 
-If you need to trigger a release manually (e.g., re-running a failed release):
+### 3. Merge the PR
 
-1. Go to [Actions > Release](../../actions/workflows/release.yml)
-2. Click **Run workflow**
-3. Enter the version (must match `package.json`)
-4. Optionally enable **Dry run** to preview
+When a PR with the `release` label is merged to `main`, the release workflow:
+
+1. Checks for pending changesets
+2. Sends a Slack notification requesting approval
+3. On approval:
+   - Applies changesets (bumps version, updates CHANGELOG.md)
+   - Syncs version to `com.posthog.unity/package.json` and `SdkInfo.Generated.cs`
+   - Commits the version bump to `main`
+   - Creates a git tag (`vX.Y.Z`)
+   - Creates a GitHub Release with auto-generated notes
+
+### Manual trigger
+
+You can also trigger the release workflow manually from the [Actions tab](../../actions/workflows/release.yml) via **Run workflow**.
 
 ## Version Pinning for Users
 
@@ -113,31 +86,13 @@ https://github.com/PostHog/posthog-unity.git?path=com.posthog.unity#v0.1.0
 
 The workflow only triggers when:
 
-- A PR is merged (not closed without merging)
-- The PR branch starts with `release/v`
+- A PR with the `release` label is merged to `main`
+- Or manually via workflow_dispatch
 
-Check the PR was from the correct branch name.
+### "No changesets found" error
 
-### "Tag already exists" error
+Ensure your PR includes a changeset file in `.changeset/`. Run `pnpm changeset` to create one.
 
-The tag was already created. Either:
+### Need to re-run a failed release
 
-- Use a different version number
-- Delete the existing tag if it was created in error:
-
-  ```bash
-  git tag -d v0.1.0
-  git push origin :refs/tags/v0.1.0
-  ```
-
-### Need to update a release PR
-
-If you need to make changes to a release PR before merging:
-
-```bash
-git checkout release/vX.Y.Z
-# Make changes
-git add .
-git commit -m "Fix release"
-git push
-```
+Go to [Actions > Release](../../actions/workflows/release.yml) and click **Run workflow**.

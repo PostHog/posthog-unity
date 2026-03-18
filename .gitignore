@@ -75,6 +75,9 @@ sysinfo.txt
 # Crashlytics generated file
 crashlytics-build.properties
 
+# Node.js
+node_modules/
+
 # Test project created by bin/build -u
 /TestProject/
 

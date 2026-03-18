@@ -38,8 +38,10 @@ posthog-unity/
 ├── bin/                        # Development scripts
 │   ├── bootstrap               # Install dependencies
 │   ├── fmt                     # Format code
-│   ├── test                    # Run tests
-│   └── release                 # Release automation
+│   └── test                    # Run tests
+├── scripts/                    # Release scripts
+│   └── bump-version.sh         # Sync version to platform files
+├── .changeset/                 # Changeset files for versioning
 └── .github/workflows/          # CI/CD pipelines
 ```
 
