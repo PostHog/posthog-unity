@@ -258,7 +258,7 @@ namespace PostHogUnity
 
         IStorageProvider CreateStorageProvider()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if (UNITY_WEBGL || UNITY_SWITCH) && !UNITY_EDITOR
             return new PlayerPrefsStorageProvider();
 #else
             return new FileStorageProvider();
