@@ -136,8 +136,7 @@ namespace PostHogUnity
         )
         {
             var normalizedHost = host.TrimEnd('/');
-            var url =
-                $"{normalizedHost}/flags/?v={FeatureFlagsResponse.CurrentVersion}&config=true";
+            var url = $"{normalizedHost}/flags/?v={FeatureFlagsResponse.CurrentVersion}";
 
             var body = new Dictionary<string, object>
             {
