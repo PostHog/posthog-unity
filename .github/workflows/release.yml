@@ -181,9 +181,9 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{ github.repository }}/releases \
-            -f tag_name="v$NEW_VERSION" \
+            -f tag_name="$NEW_VERSION" \
             -f target_commitish='main' \
-            -f name="v$NEW_VERSION" \
+            -f name="$NEW_VERSION" \
             -f body="$LAST_CHANGELOG_ENTRY" \
             -F draft=false \
             -F prerelease=false \
@@ -197,7 +197,7 @@ jobs:
           slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
           slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
           thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
-          message: "❌ Failed to release `posthog-unity@v${{ steps.apply-changesets.outputs.new-version }}`! <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+          message: "❌ Failed to release `posthog-unity@${{ steps.apply-changesets.outputs.new-version }}`! <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
           emoji_reaction: "x"
 
   notify-rejected:
