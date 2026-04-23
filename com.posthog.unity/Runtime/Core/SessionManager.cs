@@ -111,6 +111,8 @@ namespace PostHogUnity
             }
         }
 
+        // Must only be called while holding _lock. HandleExpiredSession mutates _sessionId
+        // before we return it, so callers need the same lock around the full operation.
         string GetSessionIdInternal(DateTime now)
         {
             if (string.IsNullOrEmpty(_sessionId))
