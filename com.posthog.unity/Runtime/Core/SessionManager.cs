@@ -1,19 +1,19 @@
 using System;
-using System.Collections.Generic;
 
 namespace PostHogUnity
 {
     /// <summary>
-    /// Manages session tracking with 30-minute inactivity timeout.
+    /// Manages in-memory session tracking with a 30-minute inactivity timeout.
     /// </summary>
     class SessionManager
     {
-        const string SessionStateKey = "session";
+        const string ExpiredWhileBackgroundedReason =
+            "Cleared expired session while app was backgrounded";
         static readonly TimeSpan SessionTimeout = TimeSpan.FromMinutes(30);
         static readonly TimeSpan MaxSessionLength = TimeSpan.FromHours(24);
 
-        readonly IStorageProvider _storage;
         readonly object _lock = new();
+        readonly Func<DateTime> _nowProvider;
 
         string _sessionId;
         DateTime _sessionStartTime;
@@ -26,38 +26,25 @@ namespace PostHogUnity
             {
                 lock (_lock)
                 {
-                    EnsureSession();
-                    return _sessionId;
+                    return GetSessionIdInternal(_nowProvider());
                 }
             }
         }
 
-        public SessionManager(IStorageProvider storage)
+        public SessionManager(Func<DateTime> nowProvider = null)
         {
-            _storage = storage;
+            _nowProvider = nowProvider ?? (() => DateTime.UtcNow);
             _isInForeground = true;
-            LoadState();
         }
 
         /// <summary>
-        /// Updates the last activity time, potentially rotating the session.
+        /// Updates the last activity time, potentially rotating or clearing the session.
         /// </summary>
         public void Touch()
         {
             lock (_lock)
             {
-                var now = DateTime.UtcNow;
-
-                // Check if we need a new session
-                if (ShouldRotateSession(now))
-                {
-                    StartNewSession();
-                }
-                else
-                {
-                    _lastActivityTime = now;
-                    SaveState();
-                }
+                TouchInternal(_nowProvider());
             }
         }
 
@@ -68,13 +55,7 @@ namespace PostHogUnity
         {
             lock (_lock)
             {
-                var now = DateTime.UtcNow;
-                _sessionId = UuidV7.Generate();
-                _sessionStartTime = now;
-                _lastActivityTime = now;
-                SaveState();
-
-                PostHogLogger.Debug($"Started new session: {_sessionId}");
+                StartNewSessionInternal(_nowProvider());
             }
         }
 
@@ -86,17 +67,20 @@ namespace PostHogUnity
             lock (_lock)
             {
                 _isInForeground = true;
-                var now = DateTime.UtcNow;
+                var now = _nowProvider();
 
-                if (ShouldRotateSession(now))
+                if (string.IsNullOrEmpty(_sessionId))
                 {
-                    StartNewSession();
+                    StartNewSessionInternal(now);
+                    return;
                 }
-                else
+
+                if (HandleExpiredSession(now))
                 {
-                    _lastActivityTime = now;
-                    SaveState();
+                    return;
                 }
+
+                _lastActivityTime = now;
             }
         }
 
@@ -108,8 +92,11 @@ namespace PostHogUnity
             lock (_lock)
             {
                 _isInForeground = false;
-                _lastActivityTime = DateTime.UtcNow;
-                SaveState();
+
+                if (!string.IsNullOrEmpty(_sessionId))
+                {
+                    _lastActivityTime = _nowProvider();
+                }
             }
         }
 
@@ -120,109 +107,104 @@ namespace PostHogUnity
         {
             lock (_lock)
             {
-                _sessionId = null;
-                SaveState();
-                PostHogLogger.Debug("Session ended");
+                ClearSessionInternal("Session ended");
             }
         }
 
-        void EnsureSession()
+        string GetSessionIdInternal(DateTime now)
         {
-            if (string.IsNullOrEmpty(_sessionId) && _isInForeground)
-            {
-                StartNewSession();
-            }
-        }
-
-        bool ShouldRotateSession(DateTime now)
-        {
-            // No session exists
             if (string.IsNullOrEmpty(_sessionId))
             {
-                return true;
+                if (_isInForeground)
+                {
+                    return StartNewSessionInternal(now);
+                }
+
+                return null;
             }
 
-            // Session exceeded max length (24 hours)
+            HandleExpiredSession(now);
+            return _sessionId;
+        }
+
+        void TouchInternal(DateTime now)
+        {
+            if (string.IsNullOrEmpty(_sessionId))
+            {
+                return;
+            }
+
+            if (HandleExpiredSession(now))
+            {
+                return;
+            }
+
+            _lastActivityTime = now;
+        }
+
+        bool HandleExpiredSession(DateTime now)
+        {
+            if (!HasExpiredSession(now))
+            {
+                return false;
+            }
+
+            if (_isInForeground)
+            {
+                StartNewSessionInternal(now);
+            }
+            else
+            {
+                ClearSessionInternal(ExpiredWhileBackgroundedReason);
+            }
+
+            return true;
+        }
+
+        bool HasExpiredSession(DateTime now)
+        {
+            if (string.IsNullOrEmpty(_sessionId))
+            {
+                return false;
+            }
+
             if (now - _sessionStartTime > MaxSessionLength)
             {
-                PostHogLogger.Debug("Session exceeded max length, rotating");
+                PostHogLogger.Debug("Session exceeded max length");
                 return true;
             }
 
-            // Session timed out (30 minutes of inactivity)
             if (now - _lastActivityTime > SessionTimeout)
             {
-                PostHogLogger.Debug("Session timed out, rotating");
+                PostHogLogger.Debug("Session timed out");
                 return true;
             }
 
             return false;
         }
 
-        void LoadState()
+        string StartNewSessionInternal(DateTime now)
         {
-            try
-            {
-                var json = _storage.LoadState(SessionStateKey);
-                if (!string.IsNullOrEmpty(json))
-                {
-                    var state = JsonSerializer.DeserializeDictionary(json);
-                    if (state != null)
-                    {
-                        _sessionId = state.TryGetValue("sessionId", out var sid)
-                            ? sid?.ToString()
-                            : null;
+            _sessionId = UuidV7.Generate();
+            _sessionStartTime = now;
+            _lastActivityTime = now;
 
-                        if (
-                            state.TryGetValue("sessionStartTime", out var startTime)
-                            && startTime != null
-                        )
-                        {
-                            if (DateTime.TryParse(startTime.ToString(), out var parsed))
-                            {
-                                _sessionStartTime = parsed;
-                            }
-                        }
-
-                        if (
-                            state.TryGetValue("lastActivityTime", out var activityTime)
-                            && activityTime != null
-                        )
-                        {
-                            if (DateTime.TryParse(activityTime.ToString(), out var parsed))
-                            {
-                                _lastActivityTime = parsed;
-                            }
-                        }
-
-                        PostHogLogger.Debug($"Loaded session: {_sessionId}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                PostHogLogger.Error("Failed to load session state", ex);
-            }
+            PostHogLogger.Debug($"Started new session: {_sessionId}");
+            return _sessionId;
         }
 
-        void SaveState()
+        void ClearSessionInternal(string reason)
         {
-            try
+            if (string.IsNullOrEmpty(_sessionId))
             {
-                var state = new Dictionary<string, object>
-                {
-                    ["sessionId"] = _sessionId,
-                    ["sessionStartTime"] = _sessionStartTime.ToString("o"),
-                    ["lastActivityTime"] = _lastActivityTime.ToString("o"),
-                };
+                return;
+            }
 
-                var json = JsonSerializer.Serialize(state);
-                _storage.SaveState(SessionStateKey, json);
-            }
-            catch (Exception ex)
-            {
-                PostHogLogger.Error("Failed to save session state", ex);
-            }
+            _sessionId = null;
+            _sessionStartTime = default;
+            _lastActivityTime = default;
+
+            PostHogLogger.Debug(reason);
         }
     }
 }
