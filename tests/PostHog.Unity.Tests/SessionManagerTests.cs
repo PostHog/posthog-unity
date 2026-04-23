@@ -4,8 +4,13 @@ namespace PostHogUnity.Tests
 {
     public class SessionManagerTests
     {
-        [Fact]
-        public void SessionId_RotatesOnlyAfterInactivityTimeoutBoundary()
+        [Theory]
+        [InlineData(30, false)]
+        [InlineData(24 * 60, true)]
+        public void SessionId_RotatesOnlyAfterTimeoutBoundary(
+            int boundaryMinutes,
+            bool keepSessionActiveUntilBoundary
+        )
         {
             var start = new DateTime(2026, 4, 2, 14, 57, 39, DateTimeKind.Utc);
             var now = start;
@@ -13,10 +18,21 @@ namespace PostHogUnity.Tests
 
             var originalSessionId = sessionManager.SessionId;
 
-            now = start.AddMinutes(30);
+            if (keepSessionActiveUntilBoundary)
+            {
+                // Keep the session active until just before the max session length.
+                for (int i = 0; i < 49; i++)
+                {
+                    now = now.AddMinutes(29);
+                    sessionManager.Touch();
+                }
+            }
+
+            var boundary = start.AddMinutes(boundaryMinutes);
+            now = boundary;
             Assert.Equal(originalSessionId, sessionManager.SessionId);
 
-            now = start.AddMinutes(30).AddTicks(1);
+            now = boundary.AddTicks(1);
             var rotatedSessionId = sessionManager.SessionId;
 
             Assert.NotNull(originalSessionId);
@@ -75,33 +91,6 @@ namespace PostHogUnity.Tests
             Assert.NotNull(originalSessionId);
             Assert.NotNull(restartedSessionId);
             Assert.NotEqual(originalSessionId, restartedSessionId);
-        }
-
-        [Fact]
-        public void SessionId_RotatesOnlyAfterMaxSessionLengthBoundary()
-        {
-            var start = new DateTime(2026, 4, 2, 14, 57, 39, DateTimeKind.Utc);
-            var now = start;
-            var sessionManager = new SessionManager(() => now);
-
-            var originalSessionId = sessionManager.SessionId;
-
-            // Keep the session active until just before the max session length.
-            for (int i = 0; i < 49; i++)
-            {
-                now = now.AddMinutes(29);
-                sessionManager.Touch();
-            }
-
-            now = start.AddHours(24);
-            Assert.Equal(originalSessionId, sessionManager.SessionId);
-
-            now = start.AddHours(24).AddTicks(1);
-            var rotatedSessionId = sessionManager.SessionId;
-
-            Assert.NotNull(originalSessionId);
-            Assert.NotNull(rotatedSessionId);
-            Assert.NotEqual(originalSessionId, rotatedSessionId);
         }
     }
 }
