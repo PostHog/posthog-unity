@@ -132,7 +132,7 @@ namespace PostHogUnity
             // Initialize components
             _networkClient = new NetworkClient(config);
             _identityManager = new IdentityManager(config, _storage);
-            _sessionManager = new SessionManager(_storage);
+            _sessionManager = new SessionManager();
             _eventQueue = new EventQueue(config, _storage, _networkClient);
 
             // Initialize feature flag manager
