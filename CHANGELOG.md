@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- f9e403f: Align Unity session handling with other client-side SDKs by using memory-only sessions.
+
+### Patch Changes
+
+- 69e05ec: Remove `config=true` from the feature flags endpoint.
+
 ## 0.1.1
 
 ### Patch Changes
