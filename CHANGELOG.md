@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- 4580627: Default the PostHog host when configured as null or empty.
+
 ## 0.2.0
 
 ### Minor Changes
