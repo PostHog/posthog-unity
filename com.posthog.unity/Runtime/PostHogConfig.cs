@@ -14,11 +14,13 @@ namespace PostHogUnity
         /// </summary>
         public string ApiKey { get; set; }
 
+        const string DefaultHost = "https://us.i.posthog.com";
+
         /// <summary>
         /// The PostHog instance URL.
         /// Defaults to the US cloud instance.
         /// </summary>
-        public string Host { get; set; } = "https://us.i.posthog.com";
+        public string Host { get; set; } = DefaultHost;
 
         /// <summary>
         /// Number of events to queue before triggering a flush.
@@ -176,7 +178,7 @@ namespace PostHogUnity
 
             if (string.IsNullOrWhiteSpace(Host))
             {
-                throw new ArgumentException("Host is required", nameof(Host));
+                Host = DefaultHost;
             }
 
             if (FlushAt < 1)
