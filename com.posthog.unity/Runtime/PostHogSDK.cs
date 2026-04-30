@@ -72,7 +72,14 @@ namespace PostHogUnity
         {
             if (config == null)
             {
-                throw new ArgumentNullException(nameof(config));
+                PostHogLogger.Warning("PostHog SDK setup skipped: configuration is null.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                PostHogLogger.Warning("PostHog SDK setup skipped: API key is not configured.");
+                return;
             }
 
             config.Validate();
