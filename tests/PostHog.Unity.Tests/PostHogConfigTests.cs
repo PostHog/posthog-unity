@@ -63,20 +63,13 @@ namespace PostHogUnity.Tests
                 Assert.Equal("ApiKey", ex.ParamName);
             }
 
-            [Fact]
-            public void WithNullHost_DefaultsHost()
+            [Theory]
+            [InlineData(null)]
+            [InlineData("")]
+            [InlineData("   ")]
+            public void WithNullEmptyOrWhitespaceHost_DefaultsHost(string host)
             {
-                var config = new PostHogConfig { ApiKey = "phc_test_key", Host = null };
-
-                config.Validate();
-
-                Assert.Equal("https://us.i.posthog.com", config.Host);
-            }
-
-            [Fact]
-            public void WithEmptyHost_DefaultsHost()
-            {
-                var config = new PostHogConfig { ApiKey = "phc_test_key", Host = "" };
+                var config = new PostHogConfig { ApiKey = "phc_test_key", Host = host };
 
                 config.Validate();
 
