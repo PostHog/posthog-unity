@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace PostHogUnity
@@ -18,7 +19,7 @@ namespace PostHogUnity
         {
             if (_logLevel <= PostHogLogLevel.Debug)
             {
-                UnityEngine.Debug.Log($"[PostHog] {message}");
+                LogSafely(() => UnityEngine.Debug.Log($"[PostHog] {message}"));
             }
         }
 
@@ -26,7 +27,7 @@ namespace PostHogUnity
         {
             if (_logLevel <= PostHogLogLevel.Info)
             {
-                UnityEngine.Debug.Log($"[PostHog] {message}");
+                LogSafely(() => UnityEngine.Debug.Log($"[PostHog] {message}"));
             }
         }
 
@@ -34,7 +35,7 @@ namespace PostHogUnity
         {
             if (_logLevel <= PostHogLogLevel.Warning)
             {
-                UnityEngine.Debug.LogWarning($"[PostHog] {message}");
+                LogSafely(() => UnityEngine.Debug.LogWarning($"[PostHog] {message}"));
             }
         }
 
@@ -42,7 +43,7 @@ namespace PostHogUnity
         {
             if (_logLevel <= PostHogLogLevel.Error)
             {
-                UnityEngine.Debug.LogError($"[PostHog] {message}");
+                LogSafely(() => UnityEngine.Debug.LogError($"[PostHog] {message}"));
             }
         }
 
@@ -50,7 +51,19 @@ namespace PostHogUnity
         {
             if (_logLevel <= PostHogLogLevel.Error)
             {
-                UnityEngine.Debug.LogError($"[PostHog] {message}: {ex}");
+                LogSafely(() => UnityEngine.Debug.LogError($"[PostHog] {message}: {ex}"));
+            }
+        }
+
+        static void LogSafely(Action log)
+        {
+            try
+            {
+                log();
+            }
+            catch
+            {
+                // Logging should never crash the SDK when Unity logging is unavailable.
             }
         }
     }
