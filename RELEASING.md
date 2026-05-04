@@ -1,98 +1,45 @@
 # Releasing
 
-This document describes how to release a new version of the PostHog Unity SDK.
+This repository uses [Changesets](https://github.com/changesets/changesets) for version management and an automated GitHub Actions workflow for releases.
 
-## Overview
+## How to Release
 
-Releases use [changesets](https://github.com/changesets/changesets) for version management and changelog generation:
+### 1. Add a Changeset
 
-1. Add a changeset to your PR describing the change
-2. Add the `release` label to the PR
-3. Merge the PR — GitHub Actions handles the rest
-
-## Prerequisites
-
-- [Node.js](https://nodejs.org/) (see `.nvmrc` for version)
-- [pnpm](https://pnpm.io/) installed (`npm install -g pnpm`)
-
-Run `pnpm install` to install dependencies.
-
-## Adding a Changeset
-
-When you make a change that should be included in the next release, add a changeset:
+When making a change that should be released, add a changeset:
 
 ```bash
 pnpm changeset
 ```
 
-This will prompt you to:
+This prompts you to select the version bump (`patch`, `minor`, or `major`) and write a short release summary. Commit the generated file in `.changeset/` with your pull request.
 
-1. Select the package(s) affected (`com.posthog.unity`)
-2. Choose the semver bump type (patch/minor/major)
-3. Write a summary of the change
+### 2. Merge the Pull Request
 
-The changeset file is created in `.changeset/` and should be committed with your PR.
+After review, merge the PR to `main`. No GitHub release label is required.
 
-### Version Guidelines
-
-Follow [Semantic Versioning](https://semver.org/):
-
-- **patch**: Bug fixes, backwards compatible
-- **minor**: New features, backwards compatible
-- **major**: Breaking changes
-
-## Release Process
-
-### 1. Create your PR with a changeset
-
-Include a changeset file in your PR (created via `pnpm changeset`).
-
-### 2. Add the `release` label
-
-Add the `release` label to the PR before or after merging.
-
-### 3. Merge the PR
-
-When a PR with the `release` label is merged to `main`, the release workflow:
+A push to `main` that includes `.changeset/**` changes automatically starts the release workflow. The workflow then:
 
 1. Checks for pending changesets
-2. Sends a Slack notification requesting approval
-3. On approval:
-   - Applies changesets (bumps version, updates CHANGELOG.md)
-   - Syncs version to `com.posthog.unity/package.json` and `SdkInfo.Generated.cs`
-   - Commits the version bump to `main`
-   - Creates a git tag (`vX.Y.Z`)
-   - Creates a GitHub Release with auto-generated notes
+2. Notifies the client libraries team in Slack for approval
+3. Waits for approval from a maintainer via the GitHub `Release` environment
+4. The workflow applies Changesets, syncs Unity package versions, tags the release, and creates a GitHub Release.
+5. Notifies Slack when the release completes or fails
 
-### Manual trigger
+### Manual Trigger
 
-You can also trigger the release workflow manually from the [Actions tab](../../actions/workflows/release.yml) via **Run workflow**.
+You can also manually trigger the release workflow from the Actions tab with `workflow_dispatch`. Manual runs still require pending changesets.
 
-## Version Pinning for Users
+## Version Bumping
 
-Users can install specific versions via git URL:
+Changesets determines the next version from the committed changeset files:
 
-```text
-# Latest
-https://github.com/PostHog/posthog-unity.git?path=com.posthog.unity
-
-# Specific version
-https://github.com/PostHog/posthog-unity.git?path=com.posthog.unity#v0.1.0
-```
+- **patch**: bug fixes, documentation updates, and internal changes
+- **minor**: backwards-compatible features
+- **major**: breaking changes
 
 ## Troubleshooting
 
-### Release workflow didn't trigger
+### No changesets found
 
-The workflow only triggers when:
-
-- A PR with the `release` label is merged to `main`
-- Or manually via workflow_dispatch
-
-### "No changesets found" error
-
-Ensure your PR includes a changeset file in `.changeset/`. Run `pnpm changeset` to create one.
-
-### Need to re-run a failed release
-
-Go to [Actions > Release](../../actions/workflows/release.yml) and click **Run workflow**.
+If the release workflow reports that no changesets were found, make sure your PR includes at least one releasable `.changeset/*.md` file.
