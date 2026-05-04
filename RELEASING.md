@@ -7,8 +7,7 @@ This document describes how to release a new version of the PostHog Unity SDK.
 Releases use [changesets](https://github.com/changesets/changesets) for version management and changelog generation:
 
 1. Add a changeset to your PR describing the change
-2. Add the `release` label to the PR
-3. Merge the PR — GitHub Actions handles the rest
+2. Merge the PR — GitHub Actions handles the rest (no release label required)
 
 ## Prerequisites
 
@@ -47,13 +46,9 @@ Follow [Semantic Versioning](https://semver.org/):
 
 Include a changeset file in your PR (created via `pnpm changeset`).
 
-### 2. Add the `release` label
+### 2. Merge the PR
 
-Add the `release` label to the PR before or after merging.
-
-### 3. Merge the PR
-
-When a PR with the `release` label is merged to `main`, the release workflow:
+No release label is required. When the PR is merged to `main`, the release workflow:
 
 1. Checks for pending changesets
 2. Sends a Slack notification requesting approval
@@ -86,7 +81,7 @@ https://github.com/PostHog/posthog-unity.git?path=com.posthog.unity#v0.1.0
 
 The workflow only triggers when:
 
-- A PR with the `release` label is merged to `main`
+- A PR with a changeset is merged to `main`
 - Or manually via workflow_dispatch
 
 ### "No changesets found" error
