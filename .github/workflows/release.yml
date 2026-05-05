@@ -150,7 +150,7 @@ jobs:
           git fetch origin main
           git reset --hard "$COMMIT_HASH"
       - name: Tag and push
-        if: steps.check-changes.outputs.committed == 'true'
+        if: steps.commit-version-bump.outputs.commit-hash != ''
         env:
           GITHUB_TOKEN: ${{ steps.releaser.outputs.token }}
           NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
@@ -159,7 +159,7 @@ jobs:
           git push origin "v$NEW_VERSION"
 
       - name: Create GitHub Release
-        if: steps.check-changes.outputs.committed == 'true'
+        if: steps.commit-version-bump.outputs.commit-hash != ''
         env:
           GH_TOKEN: ${{ steps.releaser.outputs.token }}
           NEW_VERSION: ${{ steps.apply-changesets.outputs.new-version }}
