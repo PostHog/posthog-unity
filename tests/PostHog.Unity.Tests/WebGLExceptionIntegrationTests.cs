@@ -44,22 +44,6 @@ namespace PostHogUnity.Tests
             ) { }
         }
 
-        sealed class HandlerScope : IDisposable
-        {
-            readonly ILogHandler _original;
-
-            public HandlerScope(ILogHandler handler)
-            {
-                _original = Debug.unityLogger.logHandler;
-                Debug.unityLogger.logHandler = handler;
-            }
-
-            public void Dispose()
-            {
-                Debug.unityLogger.logHandler = _original;
-            }
-        }
-
         const string CallbackFieldName = "_callback";
         const string HandleLogMessageMethodName = "HandleLogMessage";
 
@@ -145,7 +129,7 @@ namespace PostHogUnity.Tests
             [Fact]
             public void ExceptionType_WithNonEmptyConditionAndStackTrace_InvokesCallback()
             {
-                using var scope = new HandlerScope(new NullLogHandler());
+                using var scope = new UnityHandlerScope(new NullLogHandler());
 
                 var integration = new WebGLExceptionIntegration();
                 string capturedCondition = null;
@@ -172,7 +156,7 @@ namespace PostHogUnity.Tests
             [InlineData(LogType.Assert)]
             public void NonExceptionType_DoesNotInvokeCallback(LogType type)
             {
-                using var scope = new HandlerScope(new NullLogHandler());
+                using var scope = new UnityHandlerScope(new NullLogHandler());
 
                 var integration = new WebGLExceptionIntegration();
                 int invocations = 0;
@@ -186,7 +170,7 @@ namespace PostHogUnity.Tests
             [Fact]
             public void ConditionStartingWithPostHogPrefix_IsFilteredOut()
             {
-                using var scope = new HandlerScope(new NullLogHandler());
+                using var scope = new UnityHandlerScope(new NullLogHandler());
 
                 var integration = new WebGLExceptionIntegration();
                 int invocations = 0;
@@ -205,7 +189,7 @@ namespace PostHogUnity.Tests
             [Fact]
             public void CallbackThatThrows_DoesNotPropagate()
             {
-                using var scope = new HandlerScope(new NullLogHandler());
+                using var scope = new UnityHandlerScope(new NullLogHandler());
 
                 var integration = new WebGLExceptionIntegration();
                 SetCallback(
@@ -223,7 +207,7 @@ namespace PostHogUnity.Tests
             [Fact]
             public void WithNoRegisteredCallback_DoesNothing()
             {
-                using var scope = new HandlerScope(new NullLogHandler());
+                using var scope = new UnityHandlerScope(new NullLogHandler());
 
                 // No callback set — exercise the null-conditional branch.
                 var integration = new WebGLExceptionIntegration();

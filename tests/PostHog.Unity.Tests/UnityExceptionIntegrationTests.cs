@@ -22,7 +22,7 @@ namespace PostHogUnity.Tests
     ///     standard .NET test host. To make any test that exercises code reaching
     ///     <c>PostHogLogger</c> survive, every test below first swaps
     ///     <c>Debug.unityLogger.logHandler</c> for a recording test double via
-    ///     <see cref="HandlerScope"/>. With the swap in place, <c>Debug.LogWarning</c>
+    ///     <see cref="UnityHandlerScope"/>. With the swap in place, <c>Debug.LogWarning</c>
     ///     / <c>Debug.LogError</c> route through managed code into the test double
     ///     rather than into the native stub.
     ///   * Tests in this collection share that global state and therefore run
@@ -88,27 +88,6 @@ namespace PostHogUnity.Tests
             ) => throw new InvalidOperationException("log handler broken");
         }
 
-        /// <summary>
-        /// Snapshots <c>Debug.unityLogger.logHandler</c> on construction and
-        /// restores it on disposal. Uses the supplied test double in between so
-        /// any internal <c>Debug.Log*</c> calls route through managed code.
-        /// </summary>
-        sealed class HandlerScope : IDisposable
-        {
-            readonly ILogHandler _original;
-
-            public HandlerScope(ILogHandler handler)
-            {
-                _original = Debug.unityLogger.logHandler;
-                Debug.unityLogger.logHandler = handler;
-            }
-
-            public void Dispose()
-            {
-                Debug.unityLogger.logHandler = _original;
-            }
-        }
-
         [Collection("UnityGlobals")]
         public class TheRegisterMethod
         {
@@ -116,7 +95,7 @@ namespace PostHogUnity.Tests
             public void AfterRegister_LogExceptionInvokesCallbackWithException()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 Exception captured = null;
@@ -132,7 +111,7 @@ namespace PostHogUnity.Tests
             public void CallingRegisterTwice_DoesNotReplaceCallbackAndDoesNotThrow()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 Exception capturedByFirst = null;
@@ -160,7 +139,7 @@ namespace PostHogUnity.Tests
             public void AfterUnregister_LogExceptionDoesNotInvokeCallback()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 int callbackInvocations = 0;
@@ -176,7 +155,7 @@ namespace PostHogUnity.Tests
             public void WhenNotRegistered_DoesNotThrow()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
 
@@ -193,7 +172,7 @@ namespace PostHogUnity.Tests
             public void ForwardsToTheOriginalLogHandler()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 integration.Register(_ => { });
@@ -209,7 +188,7 @@ namespace PostHogUnity.Tests
             public void WhenCallbackThrows_DoesNotPropagate()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 integration.Register(_ => throw new ApplicationException("callback failed"));
@@ -229,7 +208,7 @@ namespace PostHogUnity.Tests
             public void WithNullException_DoesNotInvokeCallback()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 int callbackInvocations = 0;
@@ -253,7 +232,7 @@ namespace PostHogUnity.Tests
                 // the broken handler and raises. The forward-to-previous of
                 // the original exception must still happen.
                 var handler = new ThrowingLogFormatHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 integration.Register(_ => throw new ApplicationException("callback boom"));
@@ -285,7 +264,7 @@ namespace PostHogUnity.Tests
             public void DoesNotInvokeCallback(LogType logType)
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 int callbackInvocations = 0;
@@ -300,7 +279,7 @@ namespace PostHogUnity.Tests
             public void ForwardsToTheOriginalLogHandler()
             {
                 var handler = new RecordingLogHandler();
-                using var scope = new HandlerScope(handler);
+                using var scope = new UnityHandlerScope(handler);
 
                 var integration = new UnityExceptionIntegration();
                 integration.Register(_ => { });
