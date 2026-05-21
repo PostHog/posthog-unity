@@ -60,23 +60,29 @@ namespace PostHogUnity.ErrorTracking
 
         void ILogHandler.LogException(Exception exception, UnityObject context)
         {
-            // Report to our consumer before forwarding so it observes the
-            // exception even if the original handler decides to terminate
-            // (e.g. in some edit-mode contexts).
-            var callback = _onException;
-            if (callback != null && exception != null)
+            // The forward-to-previous call lives in `finally` so we still
+            // chain even if the callback or its logger fault. PostHogLogger
+            // routes through Debug.LogError, which can re-enter this same
+            // integration and surface whatever the host handler does.
+            try
             {
-                try
+                var callback = _onException;
+                if (callback != null && exception != null)
                 {
-                    callback(exception);
-                }
-                catch (Exception failure)
-                {
-                    PostHogLogger.Error("Exception callback threw", failure);
+                    try
+                    {
+                        callback(exception);
+                    }
+                    catch (Exception failure)
+                    {
+                        PostHogLogger.Error("Exception callback threw", failure);
+                    }
                 }
             }
-
-            _previous?.LogException(exception, context);
+            finally
+            {
+                _previous?.LogException(exception, context);
+            }
         }
 
         void ILogHandler.LogFormat(

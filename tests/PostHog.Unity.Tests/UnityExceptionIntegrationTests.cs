@@ -64,6 +64,31 @@ namespace PostHogUnity.Tests
         }
 
         /// <summary>
+        /// Records <c>LogException</c> calls but throws on every <c>LogFormat</c>
+        /// call. Used to simulate the case where <c>PostHogLogger.Error</c> itself
+        /// fails (it routes through <c>Debug.LogError</c>, which re-enters the
+        /// installed integration and ends up calling <c>LogFormat</c> on this).
+        /// </summary>
+        sealed class ThrowingLogFormatHandler : ILogHandler
+        {
+            public int LogExceptionCount;
+            public Exception LastException;
+
+            public void LogException(Exception exception, UnityEngine.Object context)
+            {
+                LogExceptionCount++;
+                LastException = exception;
+            }
+
+            public void LogFormat(
+                LogType logType,
+                UnityEngine.Object context,
+                string format,
+                params object[] args
+            ) => throw new InvalidOperationException("log handler broken");
+        }
+
+        /// <summary>
         /// Snapshots <c>Debug.unityLogger.logHandler</c> on construction and
         /// restores it on disposal. Uses the supplied test double in between so
         /// any internal <c>Debug.Log*</c> calls route through managed code.
@@ -216,6 +241,36 @@ namespace PostHogUnity.Tests
 
                 Assert.Null(thrown);
                 Assert.Equal(0, callbackInvocations);
+            }
+
+            [Fact]
+            public void WhenLoggerAlsoThrows_StillForwardsExceptionToPreviousHandler()
+            {
+                // The throwing handler stands in for a host log handler that
+                // misbehaves on LogFormat. When the callback fails and the SDK
+                // tries to PostHogLogger.Error the failure, the error log
+                // re-enters this integration's LogFormat, which forwards to
+                // the broken handler and raises. The forward-to-previous of
+                // the original exception must still happen.
+                var handler = new ThrowingLogFormatHandler();
+                using var scope = new HandlerScope(handler);
+
+                var integration = new UnityExceptionIntegration();
+                integration.Register(_ => throw new ApplicationException("callback boom"));
+
+                var raised = new InvalidOperationException("raise");
+                try
+                {
+                    ((ILogHandler)integration).LogException(raised, null);
+                }
+                catch
+                {
+                    // Whether the logger-induced exception propagates is not
+                    // the contract under test; the forwarding guarantee is.
+                }
+
+                Assert.Equal(1, handler.LogExceptionCount);
+                Assert.Same(raised, handler.LastException);
             }
         }
 
