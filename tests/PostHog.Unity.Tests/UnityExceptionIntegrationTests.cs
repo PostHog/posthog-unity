@@ -277,8 +277,12 @@ namespace PostHogUnity.Tests
         [Collection("UnityGlobals")]
         public class TheLogFormatMethod
         {
-            [Fact]
-            public void DoesNotInvokeCallback()
+            [Theory]
+            [InlineData(LogType.Error)]
+            [InlineData(LogType.Warning)]
+            [InlineData(LogType.Log)]
+            [InlineData(LogType.Assert)]
+            public void DoesNotInvokeCallback(LogType logType)
             {
                 var handler = new RecordingLogHandler();
                 using var scope = new HandlerScope(handler);
@@ -287,10 +291,7 @@ namespace PostHogUnity.Tests
                 int callbackInvocations = 0;
                 integration.Register(_ => callbackInvocations++);
 
-                ((ILogHandler)integration).LogFormat(LogType.Error, null, "{0}", "msg");
-                ((ILogHandler)integration).LogFormat(LogType.Warning, null, "{0}", "msg");
-                ((ILogHandler)integration).LogFormat(LogType.Log, null, "{0}", "msg");
-                ((ILogHandler)integration).LogFormat(LogType.Assert, null, "{0}", "msg");
+                ((ILogHandler)integration).LogFormat(logType, null, "{0}", "msg");
 
                 Assert.Equal(0, callbackInvocations);
             }
