@@ -77,7 +77,7 @@ namespace PostHogUnity.ErrorTracking
                 ["value"] = exceptionMessage,
                 ["mechanism"] = new Dictionary<string, object>
                 {
-                    ["type"] = handled ? "generic" : "unity.log",
+                    ["type"] = "generic",
                     ["handled"] = handled,
                     ["source"] = "unity",
                     ["synthetic"] = true,
@@ -124,7 +124,7 @@ namespace PostHogUnity.ErrorTracking
                         ["value"] = ex.Message,
                         ["mechanism"] = new Dictionary<string, object>
                         {
-                            ["type"] = handled ? "generic" : "unity.LogException",
+                            ["type"] = "generic",
                             ["handled"] = handled,
                             ["source"] = "unity",
                             ["synthetic"] = false,
