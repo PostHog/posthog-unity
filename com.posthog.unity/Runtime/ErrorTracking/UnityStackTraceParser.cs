@@ -93,9 +93,7 @@ namespace PostHogUnity.ErrorTracking
                             module: method?.DeclaringType?.FullName ?? "",
                             function: method?.Name ?? "",
                             absPath: absPath ?? "",
-                            filename: string.IsNullOrEmpty(absPath)
-                                ? ""
-                                : ExtractLeafName(absPath),
+                            filename: string.IsNullOrEmpty(absPath) ? "" : ExtractLeafName(absPath),
                             lineNo: sourceLine > 0 ? sourceLine : null,
                             colNo: sourceColumn > 0 ? sourceColumn : null
                         )

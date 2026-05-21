@@ -71,11 +71,13 @@ namespace PostHogUnity.Tests
         sealed class HandlerScope : IDisposable
         {
             readonly ILogHandler _original;
+
             public HandlerScope(ILogHandler handler)
             {
                 _original = Debug.unityLogger.logHandler;
                 Debug.unityLogger.logHandler = handler;
             }
+
             public void Dispose()
             {
                 Debug.unityLogger.logHandler = _original;
@@ -112,8 +114,8 @@ namespace PostHogUnity.Tests
                 Exception capturedBySecond = null;
                 integration.Register(ex => capturedByFirst = ex);
 
-                var thrown = Record.Exception(
-                    () => integration.Register(ex => capturedBySecond = ex)
+                var thrown = Record.Exception(() =>
+                    integration.Register(ex => capturedBySecond = ex)
                 );
 
                 Assert.Null(thrown);
@@ -188,8 +190,8 @@ namespace PostHogUnity.Tests
                 integration.Register(_ => throw new ApplicationException("callback failed"));
 
                 var raised = new InvalidOperationException("raise");
-                var thrown = Record.Exception(
-                    () => ((ILogHandler)integration).LogException(raised, null)
+                var thrown = Record.Exception(() =>
+                    ((ILogHandler)integration).LogException(raised, null)
                 );
 
                 Assert.Null(thrown);
@@ -208,8 +210,8 @@ namespace PostHogUnity.Tests
                 int callbackInvocations = 0;
                 integration.Register(_ => callbackInvocations++);
 
-                var thrown = Record.Exception(
-                    () => ((ILogHandler)integration).LogException(null, null)
+                var thrown = Record.Exception(() =>
+                    ((ILogHandler)integration).LogException(null, null)
                 );
 
                 Assert.Null(thrown);

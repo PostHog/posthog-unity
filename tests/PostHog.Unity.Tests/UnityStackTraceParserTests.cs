@@ -143,7 +143,8 @@ namespace PostHogUnity.Tests
             [Fact]
             public void WithCrLfLineEndings_ToleratesTrailingCarriageReturn()
             {
-                var trace = "A.B:First () (at Assets/A.cs:1)\r\nA.B:Second () (at Assets/B.cs:2)\r\n";
+                var trace =
+                    "A.B:First () (at Assets/A.cs:1)\r\nA.B:Second () (at Assets/B.cs:2)\r\n";
 
                 var frames = UnityStackTraceParser.Parse(trace);
 
@@ -157,7 +158,8 @@ namespace PostHogUnity.Tests
             [Fact]
             public void WithBlankLinesBetweenFrames_SkipsThem()
             {
-                var trace = "\nA.B:First () (at Assets/A.cs:1)\n\n\nA.B:Second () (at Assets/A.cs:2)\n";
+                var trace =
+                    "\nA.B:First () (at Assets/A.cs:1)\n\n\nA.B:Second () (at Assets/A.cs:2)\n";
 
                 var frames = UnityStackTraceParser.Parse(trace);
 
@@ -316,8 +318,8 @@ namespace PostHogUnity.Tests
                 var ex = new InvalidOperationException("not thrown");
 
                 List<Dictionary<string, object>> frames = null;
-                var thrown = Record.Exception(
-                    () => frames = UnityStackTraceParser.ParseException(ex)
+                var thrown = Record.Exception(() =>
+                    frames = UnityStackTraceParser.ParseException(ex)
                 );
 
                 Assert.Null(thrown);

@@ -47,11 +47,13 @@ namespace PostHogUnity.Tests
         sealed class HandlerScope : IDisposable
         {
             readonly ILogHandler _original;
+
             public HandlerScope(ILogHandler handler)
             {
                 _original = Debug.unityLogger.logHandler;
                 Debug.unityLogger.logHandler = handler;
             }
+
             public void Dispose()
             {
                 Debug.unityLogger.logHandler = _original;
@@ -65,18 +67,20 @@ namespace PostHogUnity.Tests
             typeof(WebGLExceptionIntegration).GetMethod(
                 HandleLogMessageMethodName,
                 BindingFlags.Instance | BindingFlags.NonPublic
-            ) ?? throw new InvalidOperationException(
+            )
+            ?? throw new InvalidOperationException(
                 $"Could not find {HandleLogMessageMethodName} on {typeof(WebGLExceptionIntegration).FullName}. "
-                + "If the rewrite renamed this private method, update the reflection lookup above to match."
+                    + "If the rewrite renamed this private method, update the reflection lookup above to match."
             );
 
         static readonly FieldInfo CallbackField =
             typeof(WebGLExceptionIntegration).GetField(
                 CallbackFieldName,
                 BindingFlags.Instance | BindingFlags.NonPublic
-            ) ?? throw new InvalidOperationException(
+            )
+            ?? throw new InvalidOperationException(
                 $"Could not find {CallbackFieldName} on {typeof(WebGLExceptionIntegration).FullName}. "
-                + "If the rewrite renamed this field, update the reflection lookup above to match."
+                    + "If the rewrite renamed this field, update the reflection lookup above to match."
             );
 
         static void SetCallback(
@@ -112,8 +116,7 @@ namespace PostHogUnity.Tests
         public class TheRegisterMethod
         {
             [Fact(
-                Skip =
-                    "Register subscribes via Application.logMessageReceived += … which calls "
+                Skip = "Register subscribes via Application.logMessageReceived += … which calls "
                     + "into native code (ECall) in the Unity3D.SDK stub and throws SecurityException. "
                     + "Cannot exercise the public Register contract from this test host."
             )]
@@ -124,8 +127,7 @@ namespace PostHogUnity.Tests
         public class TheUnregisterMethod
         {
             [Fact(
-                Skip =
-                    "Unregister unsubscribes via Application.logMessageReceived -= … which calls "
+                Skip = "Unregister unsubscribes via Application.logMessageReceived -= … which calls "
                     + "into native code (ECall) in the Unity3D.SDK stub and throws SecurityException. "
                     + "Cannot exercise the public Unregister contract from this test host."
             )]
@@ -211,8 +213,8 @@ namespace PostHogUnity.Tests
                     (_, __) => throw new ApplicationException("callback failed")
                 );
 
-                var thrown = Record.Exception(
-                    () => RaiseLogMessage(integration, "msg", "stack", LogType.Exception)
+                var thrown = Record.Exception(() =>
+                    RaiseLogMessage(integration, "msg", "stack", LogType.Exception)
                 );
 
                 Assert.Null(thrown);
@@ -226,8 +228,8 @@ namespace PostHogUnity.Tests
                 // No callback set — exercise the null-conditional branch.
                 var integration = new WebGLExceptionIntegration();
 
-                var thrown = Record.Exception(
-                    () => RaiseLogMessage(integration, "msg", "stack", LogType.Exception)
+                var thrown = Record.Exception(() =>
+                    RaiseLogMessage(integration, "msg", "stack", LogType.Exception)
                 );
 
                 Assert.Null(thrown);
