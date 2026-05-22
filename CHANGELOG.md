@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+### Patch Changes
+
+- c601c5c: Align Unity error tracking exception payloads with other PostHog SDKs and improve Unity/WebGL exception integration handling.
+
 ## 0.2.1
 
 ### Patch Changes
