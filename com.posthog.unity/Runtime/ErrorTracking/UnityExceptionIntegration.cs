@@ -1,114 +1,98 @@
 using System;
 using UnityEngine;
+using UnityObject = UnityEngine.Object;
 
 namespace PostHogUnity.ErrorTracking
 {
     /// <summary>
-    /// Intercepts Unity's log handler to capture Debug.LogException calls with actual exception objects.
-    /// This is used on non-WebGL platforms where Debug.unityLogger.logHandler works correctly.
+    /// Hooks into Unity's logging pipeline by replacing the active
+    /// <see cref="ILogHandler"/> on <see cref="Debug.unityLogger"/>. Any
+    /// <see cref="ILogHandler.LogException"/> call is reported through the
+    /// supplied callback and then passed to the previously installed handler
+    /// so existing logging behaviour is preserved.
     /// </summary>
     sealed class UnityExceptionIntegration : ILogHandler
     {
-        ILogHandler _originalLogHandler;
-        Action<Exception> _captureCallback;
-        bool _isRegistered;
+        Action<Exception> _onException;
+        ILogHandler _previous;
+        bool _installed;
 
         /// <summary>
-        /// Registers this integration by replacing Unity's log handler.
+        /// Installs this instance as Unity's active log handler and remembers
+        /// the previous one for chaining. Calling twice without an intervening
+        /// <see cref="Unregister"/> logs a warning and does nothing.
         /// </summary>
-        /// <param name="captureCallback">Callback to invoke when an exception is captured</param>
-        public void Register(Action<Exception> captureCallback)
+        public void Register(Action<Exception> onException)
         {
-            if (_isRegistered)
+            if (_installed)
             {
-                PostHogLogger.Warning("UnityExceptionIntegration has already been registered.");
+                PostHogLogger.Warning("UnityExceptionIntegration is already registered");
                 return;
             }
 
-            // Safety check: don't register if we're already the log handler
-            if (Debug.unityLogger.logHandler == this)
-            {
-                PostHogLogger.Warning("UnityExceptionIntegration is already the log handler.");
-                return;
-            }
-
-            _captureCallback = captureCallback;
-            _originalLogHandler = Debug.unityLogger.logHandler;
+            _onException = onException;
+            _previous = Debug.unityLogger.logHandler;
             Debug.unityLogger.logHandler = this;
-            _isRegistered = true;
-
-            PostHogLogger.Debug("UnityExceptionIntegration registered");
+            _installed = true;
         }
 
         /// <summary>
-        /// Unregisters this integration and restores the original log handler.
+        /// Restores the prior log handler if this instance is still the active
+        /// one. If a third party replaced the handler in between, the current
+        /// handler is left in place.
         /// </summary>
         public void Unregister()
         {
-            if (!_isRegistered)
+            if (!_installed)
             {
                 return;
             }
 
-            // Only restore if we're still the log handler
-            if (Debug.unityLogger.logHandler == this && _originalLogHandler != null)
+            if (ReferenceEquals(Debug.unityLogger.logHandler, this))
             {
-                Debug.unityLogger.logHandler = _originalLogHandler;
+                Debug.unityLogger.logHandler = _previous;
             }
 
-            _isRegistered = false;
-            _captureCallback = null;
-
-            PostHogLogger.Debug("UnityExceptionIntegration unregistered");
+            _previous = null;
+            _onException = null;
+            _installed = false;
         }
 
-        /// <summary>
-        /// Called by Unity when Debug.LogException is invoked.
-        /// </summary>
-        public void LogException(Exception exception, UnityEngine.Object context)
+        void ILogHandler.LogException(Exception exception, UnityObject context)
         {
+            // The forward-to-previous call lives in `finally` so we still
+            // chain even if the callback or its logger fault. PostHogLogger
+            // routes through Debug.LogError, which can re-enter this same
+            // integration and surface whatever the host handler does.
             try
             {
-                ProcessException(exception);
+                var callback = _onException;
+                if (callback != null && exception != null)
+                {
+                    try
+                    {
+                        callback(exception);
+                    }
+                    catch (Exception failure)
+                    {
+                        PostHogLogger.Error("Exception callback threw", failure);
+                    }
+                }
             }
             finally
             {
-                // Always pass the exception back to Unity's original handler
-                _originalLogHandler?.LogException(exception, context);
+                _previous?.LogException(exception, context);
             }
         }
 
-        /// <summary>
-        /// Called by Unity for non-exception log messages.
-        /// </summary>
-        public void LogFormat(
+        void ILogHandler.LogFormat(
             LogType logType,
-            UnityEngine.Object context,
+            UnityObject context,
             string format,
             params object[] args
         )
         {
-            // Pass through to original handler
-            // We don't capture regular log messages here - that's handled separately
-            _originalLogHandler?.LogFormat(logType, context, format, args);
-        }
-
-        void ProcessException(Exception exception)
-        {
-            if (exception == null)
-            {
-                return;
-            }
-
-            try
-            {
-                _captureCallback?.Invoke(exception);
-            }
-            catch (Exception e)
-            {
-                // Never let an exception in our callback propagate and break user code
-                PostHogLogger.Error("Error processing exception in PostHog", e);
-            }
+            _previous?.LogFormat(logType, context, format, args);
         }
     }
 }

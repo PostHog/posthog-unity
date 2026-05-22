@@ -1,209 +1,254 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Diagnostics;
 
 namespace PostHogUnity.ErrorTracking
 {
     /// <summary>
-    /// Parses Unity-formatted stacktraces into structured stack frames.
+    /// Converts Unity-formatted stack trace strings and .NET exceptions into the
+    /// frame-dictionary structure used by PostHog's error tracking wire format.
     /// </summary>
     static class UnityStackTraceParser
     {
-        const string AtFileMarker = " (at ";
+        const string LocationMarker = " (at ";
+        static readonly char[] PathSeparators = { '/', '\\' };
 
         /// <summary>
-        /// Parses a Unity stacktrace string into structured stack frames.
+        /// Parses a Unity stack trace string into an ordered list of frame dictionaries.
+        /// Every non-empty input line produces exactly one frame: lines that match the
+        /// <c>Module:Method (args) (at path:line)</c> shape are decomposed into a
+        /// function name and location, and lines that don't are preserved verbatim
+        /// under <c>function</c> so diagnostic context isn't lost.
         /// </summary>
-        /// <param name="stackTrace">The Unity stacktrace string to parse</param>
-        /// <returns>A list of parsed stack frame dictionaries</returns>
         public static List<Dictionary<string, object>> Parse(string stackTrace)
         {
-            // Example: Sentry.Unity.Integrations.UnityLogHandlerIntegration:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[]) (at UnityLogHandlerIntegration.cs:89)
-            // This follows the following format:
-            // Module.Class:Method[.Invoke] (arguments) (at filepath:linenumber)
-            // The ':linenumber' is optional and will be omitted in builds
-
             var frames = new List<Dictionary<string, object>>();
-
             if (string.IsNullOrEmpty(stackTrace))
             {
                 return frames;
             }
 
-            var stackList = stackTrace.Split('\n');
-
-            foreach (var line in stackList)
+            try
             {
-                var item = line.TrimEnd('\r');
-                if (string.IsNullOrEmpty(item))
+                foreach (var rawLine in stackTrace.Split('\n'))
                 {
-                    continue;
-                }
+                    var line = rawLine.Trim();
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
 
-                var frame = ParseStackFrame(item);
-                frames.Add(frame);
+                    frames.Add(ReadTextFrame(line));
+                }
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("UnityStackTraceParser.Parse failed", ex);
             }
 
             return frames;
         }
 
         /// <summary>
-        /// Parses a .NET Exception's stack trace into structured stack frames.
+        /// Walks the frames of a .NET <see cref="Exception"/> using
+        /// <see cref="StackTrace"/> and emits them in the same wire format. When the
+        /// runtime can't materialise structured frames (common on IL2CPP/AOT builds
+        /// where <see cref="StackTrace.GetFrames"/> returns <c>null</c>), falls back
+        /// to parsing <see cref="Exception.StackTrace"/> as text so we still ship
+        /// usable stack data.
         /// </summary>
-        /// <param name="exception">The exception to parse</param>
-        /// <returns>A list of parsed stack frame dictionaries</returns>
         public static List<Dictionary<string, object>> ParseException(Exception exception)
         {
             var frames = new List<Dictionary<string, object>>();
-
             if (exception == null)
             {
                 return frames;
             }
 
-            var stackTrace = new System.Diagnostics.StackTrace(exception, true);
-            var stackFrames = stackTrace.GetFrames();
-
-            if (stackFrames == null)
+            try
             {
-                // Fall back to parsing the string representation
-                if (!string.IsNullOrEmpty(exception.StackTrace))
+                var trace = new StackTrace(exception, fNeedFileInfo: true);
+                var stackFrames = trace.GetFrames();
+                if (stackFrames == null)
                 {
-                    return Parse(exception.StackTrace);
+                    return string.IsNullOrEmpty(exception.StackTrace)
+                        ? frames
+                        : Parse(exception.StackTrace);
                 }
-                return frames;
-            }
 
-            foreach (var frame in stackFrames)
-            {
-                var method = frame.GetMethod();
-                var fileName = frame.GetFileName();
-                var lineNumber = frame.GetFileLineNumber();
-                var columnNumber = frame.GetFileColumnNumber();
-
-                var frameDetails = new Dictionary<string, object>
+                foreach (var sf in stackFrames)
                 {
-                    ["platform"] = "custom",
-                    ["lang"] = "csharp",
-                    ["filename"] = string.IsNullOrEmpty(fileName) ? "" : Path.GetFileName(fileName),
-                    ["abs_path"] = fileName ?? "",
-                    ["function"] = method?.Name ?? "",
-                    ["module"] = method?.DeclaringType?.FullName ?? "",
-                    ["lineno"] = lineNumber > 0 ? (object)lineNumber : null,
-                    ["colno"] = columnNumber > 0 ? (object)columnNumber : null,
-                };
+                    if (sf == null)
+                    {
+                        continue;
+                    }
 
-                frames.Add(frameDetails);
+                    var method = sf.GetMethod();
+                    var absPath = sf.GetFileName();
+                    var sourceLine = sf.GetFileLineNumber();
+                    var sourceColumn = sf.GetFileColumnNumber();
+
+                    frames.Add(
+                        BuildFrame(
+                            module: method?.DeclaringType?.FullName ?? "",
+                            function: method?.Name ?? "",
+                            absPath: absPath ?? "",
+                            filename: string.IsNullOrEmpty(absPath) ? "" : ExtractLeafName(absPath),
+                            lineNo: sourceLine > 0 ? sourceLine : null,
+                            colNo: sourceColumn > 0 ? sourceColumn : null
+                        )
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("UnityStackTraceParser.ParseException failed", ex);
             }
 
             return frames;
         }
 
-        static Dictionary<string, object> ParseStackFrame(string stackFrameLine)
+        static Dictionary<string, object> ReadTextFrame(string line)
         {
-            var closingParenthesis = stackFrameLine.IndexOf(')');
-            if (closingParenthesis == -1)
+            // The function signature ends at the first ')'. Lines without one
+            // (header lines like "Rethrow as …", continuation markers, malformed
+            // entries) become a basic frame so the raw line stays visible.
+            var firstClose = line.IndexOf(')');
+            if (firstClose < 0)
             {
-                return CreateBasicStackFrame(stackFrameLine);
+                return BuildBasicFrame(line);
             }
 
-            try
+            var function = line.Substring(0, firstClose + 1);
+            var afterFunction = line.Substring(firstClose + 1);
+
+            var markerIndex = afterFunction.IndexOf(LocationMarker, StringComparison.Ordinal);
+            if (markerIndex < 0)
             {
-                var functionName = stackFrameLine.Substring(0, closingParenthesis + 1);
-                var remainingText = stackFrameLine.Substring(closingParenthesis + 1);
-
-                if (!remainingText.Contains(AtFileMarker))
-                {
-                    // If it does not contain '(at' it's an unknown format or no file info
-                    return CreateBasicStackFrame(functionName);
-                }
-
-                var (filename, lineNo) = ParseFileLocation(remainingText);
-                var filenameWithoutZeroes = StripZeroes(filename);
-
-                return new Dictionary<string, object>
-                {
-                    ["platform"] = "custom",
-                    ["lang"] = "csharp",
-                    ["filename"] = TryResolveFileNameForMono(filenameWithoutZeroes),
-                    ["abs_path"] = filenameWithoutZeroes,
-                    ["function"] = functionName,
-                    ["lineno"] = lineNo == -1 ? null : (object)lineNo,
-                };
+                return BuildBasicFrame(function);
             }
-            catch
+
+            var locationStart = markerIndex + LocationMarker.Length;
+            var locationEnd = afterFunction.LastIndexOf(')');
+            if (locationEnd <= locationStart)
             {
-                // Suppress any errors while parsing and fall back to a basic stackframe
-                return CreateBasicStackFrame(stackFrameLine);
+                return BuildBasicFrame(function);
             }
+
+            var rawLocation = afterFunction.Substring(locationStart, locationEnd - locationStart);
+            var (absPath, filename, lineNo) = ResolveLocation(rawLocation);
+
+            return BuildFrame(
+                module: null,
+                function: function,
+                absPath: absPath,
+                filename: filename,
+                lineNo: lineNo,
+                colNo: null
+            );
         }
 
-        static (string Filename, int LineNo) ParseFileLocation(string location)
-        {
-            var atIndex = location.IndexOf(AtFileMarker);
-            if (atIndex == -1)
-            {
-                return (location, -1);
-            }
-
-            // Remove " (at " prefix and trailing ")"
-            var startIndex = atIndex + AtFileMarker.Length;
-            var endIndex = location.LastIndexOf(')');
-            if (endIndex <= startIndex)
-            {
-                return (location.Substring(startIndex), -1);
-            }
-
-            var fileInfo = location.Substring(startIndex, endIndex - startIndex);
-            var lastColon = fileInfo.LastIndexOf(':');
-
-            if (lastColon == -1)
-            {
-                return (fileInfo, -1);
-            }
-
-            var lineStr = fileInfo.Substring(lastColon + 1);
-            if (int.TryParse(lineStr, out var lineNo))
-            {
-                return (fileInfo.Substring(0, lastColon), lineNo);
-            }
-
-            return (fileInfo, -1);
-        }
-
-        static Dictionary<string, object> CreateBasicStackFrame(string functionName)
-        {
-            return new Dictionary<string, object>
+        static Dictionary<string, object> BuildBasicFrame(string function) =>
+            new Dictionary<string, object>
             {
                 ["platform"] = "custom",
                 ["lang"] = "csharp",
-                ["function"] = functionName,
                 ["filename"] = null,
                 ["abs_path"] = null,
+                ["function"] = function,
+                ["module"] = null,
                 ["lineno"] = null,
+                ["colno"] = null,
             };
+
+        static Dictionary<string, object> BuildFrame(
+            string module,
+            string function,
+            string absPath,
+            string filename,
+            int? lineNo,
+            int? colNo
+        ) =>
+            new Dictionary<string, object>
+            {
+                ["platform"] = "custom",
+                ["lang"] = "csharp",
+                ["filename"] = filename,
+                ["abs_path"] = absPath,
+                ["function"] = function,
+                ["module"] = module,
+                ["lineno"] = lineNo,
+                ["colno"] = colNo,
+            };
+
+        static (string absPath, string filename, int? lineNo) ResolveLocation(string raw)
+        {
+            if (string.IsNullOrEmpty(raw))
+            {
+                return (null, null, null);
+            }
+
+            var path = raw;
+            int? lineNo = null;
+            var lastColon = raw.LastIndexOf(':');
+            if (lastColon > 0 && lastColon < raw.Length - 1)
+            {
+                var tail = raw.Substring(lastColon + 1);
+                if (int.TryParse(tail, out var parsedLine))
+                {
+                    path = raw.Substring(0, lastColon);
+                    lineNo = parsedLine;
+                }
+            }
+
+            // IL2CPP emits "<00…00>" when source info isn't available; surface
+            // the location as empty strings so consumers see "unknown" instead
+            // of a misleading placeholder path.
+            if (LooksLikeIl2CppPlaceholder(path))
+            {
+                return ("", "", lineNo);
+            }
+
+            return (path, ExtractLeafName(path), lineNo);
         }
 
-        // https://github.com/getsentry/sentry-unity/issues/103
-        static string StripZeroes(string filename)
+        static bool LooksLikeIl2CppPlaceholder(string path)
         {
-            return filename.Replace("0", "").Equals("<>", StringComparison.OrdinalIgnoreCase)
-                ? string.Empty
-                : filename;
+            if (string.IsNullOrEmpty(path) || path.Length < 3)
+            {
+                return false;
+            }
+
+            if (path[0] != '<' || path[path.Length - 1] != '>')
+            {
+                return false;
+            }
+
+            for (var i = 1; i < path.Length - 1; i++)
+            {
+                if (path[i] != '0')
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        static string TryResolveFileNameForMono(string fileName)
+        static string ExtractLeafName(string path)
         {
-            try
+            if (string.IsNullOrEmpty(path))
             {
-                // throws on Mono for <1231231231> paths
-                return Path.GetFileName(fileName);
+                return null;
             }
-            catch
+
+            var separator = path.LastIndexOfAny(PathSeparators);
+            if (separator >= 0 && separator < path.Length - 1)
             {
-                // mono path
-                return "Unknown";
+                return path.Substring(separator + 1);
             }
+
+            return path;
         }
     }
 }
