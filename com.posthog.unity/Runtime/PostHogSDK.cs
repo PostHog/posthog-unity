@@ -119,15 +119,24 @@ namespace PostHogUnity
         {
             lock (Lock)
             {
-                if (_instance != null)
+                if (_instance == null)
                 {
-                    _instance.ShutdownInternal();
-                    Destroy(_instance.gameObject);
-                    _instance = null;
+                    _isInitialized = false;
+                    return;
                 }
+
+                ShutdownInitializedInstance();
                 _isInitialized = false;
                 PostHogLogger.Info("PostHog SDK shut down");
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ShutdownInitializedInstance()
+        {
+            _instance.ShutdownInternal();
+            Destroy(_instance.gameObject);
+            _instance = null;
         }
 
         void InitializeInternal(PostHogConfig config)
