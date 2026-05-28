@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+### Patch Changes
+
+- 92616a6: Skip manual SDK setup instead of throwing when the configuration or API key is missing or blank.
+
 ## 0.2.2
 
 ### Patch Changes
