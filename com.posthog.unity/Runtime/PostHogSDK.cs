@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using PostHogUnity.ErrorTracking;
 using PostHogUnity.SessionReplay;
@@ -72,11 +73,23 @@ namespace PostHogUnity
         {
             if (config == null)
             {
-                throw new ArgumentNullException(nameof(config));
+                PostHogLogger.Warning("PostHog SDK setup skipped: configuration is null.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                PostHogLogger.Warning("PostHog SDK setup skipped: API key is not configured.");
+                return;
             }
 
             config.Validate();
+            SetupValidConfig(config);
+        }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void SetupValidConfig(PostHogConfig config)
+        {
             lock (Lock)
             {
                 if (_isInitialized)
@@ -106,15 +119,24 @@ namespace PostHogUnity
         {
             lock (Lock)
             {
-                if (_instance != null)
+                if (_instance == null)
                 {
-                    _instance.ShutdownInternal();
-                    Destroy(_instance.gameObject);
-                    _instance = null;
+                    _isInitialized = false;
+                    return;
                 }
+
+                ShutdownInitializedInstance();
                 _isInitialized = false;
                 PostHogLogger.Info("PostHog SDK shut down");
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ShutdownInitializedInstance()
+        {
+            _instance.ShutdownInternal();
+            Destroy(_instance.gameObject);
+            _instance = null;
         }
 
         void InitializeInternal(PostHogConfig config)
