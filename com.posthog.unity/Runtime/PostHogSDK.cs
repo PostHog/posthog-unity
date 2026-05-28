@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using PostHogUnity.ErrorTracking;
 using PostHogUnity.SessionReplay;
@@ -83,7 +84,12 @@ namespace PostHogUnity
             }
 
             config.Validate();
+            SetupValidConfig(config);
+        }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void SetupValidConfig(PostHogConfig config)
+        {
             lock (Lock)
             {
                 if (_isInitialized)
