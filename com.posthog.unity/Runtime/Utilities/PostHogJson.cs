@@ -19,6 +19,7 @@ namespace PostHogUnity
         /// <summary>
         /// Creates a new PostHogJson wrapper around a value.
         /// </summary>
+        /// <param name="value">The raw JSON-compatible value to wrap.</param>
         public PostHogJson(object value)
         {
             _value = value;
@@ -68,7 +69,8 @@ namespace PostHogUnity
         /// <summary>
         /// Gets the value as a string.
         /// </summary>
-        /// <param name="defaultValue">Default value if null or not a string</param>
+        /// <param name="defaultValue">Default value if null</param>
+        /// <returns>The string value, the value's ToString() result, or the default value.</returns>
         public string GetString(string defaultValue = null)
         {
             if (_value is string s)
@@ -80,6 +82,7 @@ namespace PostHogUnity
         /// Gets the value as an integer.
         /// </summary>
         /// <param name="defaultValue">Default value if null or not convertible</param>
+        /// <returns>The integer value or the default value.</returns>
         public int GetInt(int defaultValue = 0)
         {
             try
@@ -105,6 +108,7 @@ namespace PostHogUnity
         /// Gets the value as a long.
         /// </summary>
         /// <param name="defaultValue">Default value if null or not convertible</param>
+        /// <returns>The long value or the default value.</returns>
         public long GetLong(long defaultValue = 0)
         {
             try
@@ -130,6 +134,7 @@ namespace PostHogUnity
         /// Gets the value as a float.
         /// </summary>
         /// <param name="defaultValue">Default value if null or not convertible</param>
+        /// <returns>The float value or the default value.</returns>
         public float GetFloat(float defaultValue = 0f)
         {
             try
@@ -155,6 +160,7 @@ namespace PostHogUnity
         /// Gets the value as a double.
         /// </summary>
         /// <param name="defaultValue">Default value if null or not convertible</param>
+        /// <returns>The double value or the default value.</returns>
         public double GetDouble(double defaultValue = 0.0)
         {
             try
@@ -180,6 +186,8 @@ namespace PostHogUnity
         /// Gets the value as a boolean.
         /// </summary>
         /// <param name="defaultValue">Default value if null or not convertible</param>
+        /// <returns>The boolean value or the default value.</returns>
+        /// <remarks>Non-empty strings and non-zero integers are treated as true.</remarks>
         public bool GetBool(bool defaultValue = false)
         {
             return _value switch
@@ -202,6 +210,7 @@ namespace PostHogUnity
         /// Returns PostHogJson.Null if the key doesn't exist or this isn't an object.
         /// </summary>
         /// <param name="key">The property key</param>
+        /// <returns>The nested value, or PostHogJson.Null when unavailable.</returns>
         public PostHogJson this[string key]
         {
             get
@@ -219,6 +228,7 @@ namespace PostHogUnity
         /// Returns PostHogJson.Null if the index is out of bounds or this isn't an array.
         /// </summary>
         /// <param name="index">The array index</param>
+        /// <returns>The indexed value, or PostHogJson.Null when unavailable.</returns>
         public PostHogJson this[int index]
         {
             get
@@ -240,6 +250,7 @@ namespace PostHogUnity
         /// Returns PostHogJson.Null if any part of the path doesn't exist.
         /// </summary>
         /// <param name="path">Dot-separated path to the value</param>
+        /// <returns>The nested value, this instance for an empty path, or PostHogJson.Null.</returns>
         public PostHogJson GetPath(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -271,6 +282,7 @@ namespace PostHogUnity
         /// Checks if this object contains a key.
         /// </summary>
         /// <param name="key">The key to check</param>
+        /// <returns>True if this value is an object and contains the key.</returns>
         public bool ContainsKey(string key)
         {
             return _value is Dictionary<string, object> dict && dict.ContainsKey(key);
@@ -318,6 +330,7 @@ namespace PostHogUnity
         /// Converts to a dictionary of PostHogJson values (for JSON objects).
         /// Returns null if this isn't an object.
         /// </summary>
+        /// <returns>A dictionary of wrapped values, or null when this value is not an object.</returns>
         public Dictionary<string, PostHogJson> AsDictionary()
         {
             if (_value is Dictionary<string, object> dict)
@@ -336,6 +349,7 @@ namespace PostHogUnity
         /// Converts to a list of PostHogJson values (for JSON arrays).
         /// Returns null if this isn't an array.
         /// </summary>
+        /// <returns>A list of wrapped values, or null when this value is not an array.</returns>
         public List<PostHogJson> AsList()
         {
             if (_value is List<object> list)
@@ -363,6 +377,7 @@ namespace PostHogUnity
         /// Converts to a list of strings (for string arrays).
         /// Returns null if this isn't an array.
         /// </summary>
+        /// <returns>A list of strings, or null when this value is not an array.</returns>
         public List<string> AsStringList()
         {
             var list = AsList();
@@ -381,6 +396,7 @@ namespace PostHogUnity
         /// Converts to a list of integers (for number arrays).
         /// Returns null if this isn't an array.
         /// </summary>
+        /// <returns>A list of integers, or null when this value is not an array.</returns>
         public List<int> AsIntList()
         {
             var list = AsList();
@@ -402,32 +418,44 @@ namespace PostHogUnity
         /// <summary>
         /// Implicit conversion from PostHogJson to string.
         /// </summary>
+        /// <param name="json">The JSON value to convert.</param>
+        /// <returns>The converted string value, or null.</returns>
         public static implicit operator string(PostHogJson json) => json?.GetString();
 
         /// <summary>
         /// Implicit conversion from PostHogJson to int.
         /// </summary>
+        /// <param name="json">The JSON value to convert.</param>
+        /// <returns>The converted integer value, or 0.</returns>
         public static implicit operator int(PostHogJson json) => json?.GetInt() ?? 0;
 
         /// <summary>
         /// Implicit conversion from PostHogJson to bool.
         /// </summary>
+        /// <param name="json">The JSON value to convert.</param>
+        /// <returns>The converted boolean value, or false.</returns>
         public static implicit operator bool(PostHogJson json) => json?.GetBool() ?? false;
 
         /// <summary>
         /// Implicit conversion from PostHogJson to float.
         /// </summary>
+        /// <param name="json">The JSON value to convert.</param>
+        /// <returns>The converted float value, or 0.</returns>
         public static implicit operator float(PostHogJson json) => json?.GetFloat() ?? 0f;
 
         /// <summary>
         /// Implicit conversion from PostHogJson to double.
         /// </summary>
+        /// <param name="json">The JSON value to convert.</param>
+        /// <returns>The converted double value, or 0.</returns>
         public static implicit operator double(PostHogJson json) => json?.GetDouble() ?? 0.0;
 
         /// <summary>
         /// Returns true if the value is not null.
         /// Allows using PostHogJson directly in if statements.
         /// </summary>
+        /// <param name="json">The JSON value to evaluate.</param>
+        /// <returns>True when the value is non-null, or null when the wrapper or value is null.</returns>
         public static implicit operator bool?(PostHogJson json)
         {
             if (json == null || json.IsNull)
@@ -438,6 +466,7 @@ namespace PostHogUnity
         /// <summary>
         /// Returns the string representation of the value.
         /// </summary>
+        /// <returns>A readable representation of the wrapped value.</returns>
         public override string ToString()
         {
             if (_value == null)
@@ -452,6 +481,8 @@ namespace PostHogUnity
         /// <summary>
         /// Checks equality with another PostHogJson.
         /// </summary>
+        /// <param name="obj">The object to compare with this value.</param>
+        /// <returns>True when the wrapped values are equal.</returns>
         public override bool Equals(object obj)
         {
             if (obj is PostHogJson other)
@@ -464,6 +495,7 @@ namespace PostHogUnity
         /// <summary>
         /// Gets the hash code.
         /// </summary>
+        /// <returns>The hash code for the wrapped value, or 0 when null.</returns>
         public override int GetHashCode()
         {
             return _value?.GetHashCode() ?? 0;

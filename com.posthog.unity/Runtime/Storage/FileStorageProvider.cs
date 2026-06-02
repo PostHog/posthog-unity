@@ -22,6 +22,7 @@ namespace PostHogUnity
         // Track pending writes so we can wait for them on shutdown
         readonly ConcurrentDictionary<string, Task> _pendingWrites = new();
 
+        /// <inheritdoc />
         public void Initialize(string basePath)
         {
             _queuePath = Path.Combine(basePath, "queue");
@@ -70,6 +71,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void SaveEvent(string id, string jsonData)
         {
             // Add to index immediately so the event is counted
@@ -108,6 +110,7 @@ namespace PostHogUnity
             _pendingWrites[id] = writeTask;
         }
 
+        /// <inheritdoc />
         public string LoadEvent(string id)
         {
             // Wait for any pending write for this event to complete
@@ -145,6 +148,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void DeleteEvent(string id)
         {
             // Wait for any pending write for this event to complete before deleting
@@ -176,6 +180,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public IReadOnlyList<string> GetEventIds()
         {
             lock (_lock)
@@ -184,6 +189,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public int GetEventCount()
         {
             lock (_lock)
@@ -192,6 +198,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void Clear()
         {
             // Wait for all pending writes before clearing
@@ -245,6 +252,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void SaveState(string key, string jsonData)
         {
             try
@@ -259,6 +267,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public string LoadState(string key)
         {
             try
@@ -277,6 +286,7 @@ namespace PostHogUnity
             return null;
         }
 
+        /// <inheritdoc />
         public void DeleteState(string key)
         {
             try

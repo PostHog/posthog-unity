@@ -16,7 +16,7 @@ namespace PostHogUnity.SessionReplay
         public float ThrottleDelaySeconds { get; set; } = 1.0f;
 
         /// <summary>
-        /// JPEG compression quality for screenshots (0-100).
+        /// JPEG compression quality for screenshots (1-100).
         /// Lower values reduce file size but decrease image quality.
         /// Defaults to 80 for good visual quality.
         /// </summary>
@@ -52,26 +52,27 @@ namespace PostHogUnity.SessionReplay
 
         /// <summary>
         /// Maximum number of replay events to queue before flushing.
-        /// Defaults to 20.
+        /// Must be at least 1. Defaults to 20.
         /// </summary>
         public int FlushAt { get; set; } = 20;
 
         /// <summary>
         /// Interval in seconds between automatic replay flushes.
-        /// Defaults to 30 seconds.
+        /// Must be at least 1. Defaults to 30 seconds.
         /// </summary>
         public int FlushIntervalSeconds { get; set; } = 30;
 
         /// <summary>
         /// Maximum number of replay events to store in the queue.
         /// Oldest events are dropped when this limit is exceeded.
-        /// Defaults to 100.
+        /// Must be at least 1. Defaults to 100.
         /// </summary>
         public int MaxQueueSize { get; set; } = 100;
 
         /// <summary>
-        /// Validates the configuration and throws if invalid.
+        /// Validates the configuration values.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when screenshot, throttle, queue, or flush values are outside their allowed ranges.</exception>
         public void Validate()
         {
             if (ThrottleDelaySeconds < 0.1f)

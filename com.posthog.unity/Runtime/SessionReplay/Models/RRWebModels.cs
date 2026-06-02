@@ -54,10 +54,29 @@ namespace PostHogUnity.SessionReplay
     /// </summary>
     public static class RRWireframeType
     {
+        /// <summary>
+        /// Screenshot wireframe element.
+        /// </summary>
         public const string Screenshot = "screenshot";
+
+        /// <summary>
+        /// Text wireframe element.
+        /// </summary>
         public const string Text = "text";
+
+        /// <summary>
+        /// Image wireframe element.
+        /// </summary>
         public const string Image = "image";
+
+        /// <summary>
+        /// Rectangle wireframe element.
+        /// </summary>
         public const string Rectangle = "div";
+
+        /// <summary>
+        /// Input wireframe element.
+        /// </summary>
         public const string Input = "input";
     }
 
@@ -81,6 +100,9 @@ namespace PostHogUnity.SessionReplay
         /// </summary>
         public long Timestamp { get; set; }
 
+        /// <summary>
+        /// Creates an empty RRWeb event.
+        /// </summary>
         public RREvent()
         {
             Data = new Dictionary<string, object>();
@@ -89,6 +111,11 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Creates a meta event with screen dimensions.
         /// </summary>
+        /// <param name="width">Screen width in pixels.</param>
+        /// <param name="height">Screen height in pixels.</param>
+        /// <param name="screenName">Current screen name, or null for an empty value.</param>
+        /// <param name="timestamp">Unix timestamp in milliseconds.</param>
+        /// <returns>A meta RRWeb event.</returns>
         public static RREvent CreateMeta(int width, int height, string screenName, long timestamp)
         {
             return new RREvent
@@ -107,6 +134,9 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Creates a full snapshot event with a screenshot wireframe.
         /// </summary>
+        /// <param name="wireframe">Wireframe element to include in the snapshot.</param>
+        /// <param name="timestamp">Unix timestamp in milliseconds.</param>
+        /// <returns>A full snapshot RRWeb event.</returns>
         public static RREvent CreateFullSnapshot(RRWireframe wireframe, long timestamp)
         {
             var wireframes = new List<Dictionary<string, object>> { wireframe.ToDictionary() };
@@ -130,6 +160,11 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Creates a touch/pointer event.
         /// </summary>
+        /// <param name="x">Pointer X coordinate in pixels.</param>
+        /// <param name="y">Pointer Y coordinate in pixels.</param>
+        /// <param name="touchType">RRWeb touch type constant.</param>
+        /// <param name="timestamp">Unix timestamp in milliseconds.</param>
+        /// <returns>An incremental snapshot RRWeb event.</returns>
         public static RREvent CreatePointerEvent(float x, float y, int touchType, long timestamp)
         {
             return new RREvent
@@ -151,6 +186,9 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Creates a plugin data event for network telemetry.
         /// </summary>
+        /// <param name="requests">Network request samples to include.</param>
+        /// <param name="timestamp">Unix timestamp in milliseconds.</param>
+        /// <returns>A network telemetry plugin RRWeb event.</returns>
         public static RREvent CreateNetworkPlugin(List<NetworkSample> requests, long timestamp)
         {
             var requestDicts = new List<Dictionary<string, object>>();
@@ -174,6 +212,9 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Creates a plugin data event for console logs.
         /// </summary>
+        /// <param name="logs">Console log entries to include.</param>
+        /// <param name="timestamp">Unix timestamp in milliseconds.</param>
+        /// <returns>A console log plugin RRWeb event.</returns>
         public static RREvent CreateConsoleLogPlugin(List<LogEntry> logs, long timestamp)
         {
             var logDicts = new List<Dictionary<string, object>>();
@@ -197,6 +238,7 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Converts the event to a dictionary for JSON serialization.
         /// </summary>
+        /// <returns>A dictionary representation of the event.</returns>
         public Dictionary<string, object> ToDictionary()
         {
             return new Dictionary<string, object>
@@ -258,6 +300,10 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Creates a screenshot wireframe from base64 image data.
         /// </summary>
+        /// <param name="width">Scaled screenshot width in pixels.</param>
+        /// <param name="height">Scaled screenshot height in pixels.</param>
+        /// <param name="base64Data">Base64-encoded image data with data URL prefix.</param>
+        /// <returns>A screenshot wireframe element.</returns>
         public static RRWireframe CreateScreenshot(int width, int height, string base64Data)
         {
             return new RRWireframe
@@ -275,6 +321,7 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Converts the wireframe to a dictionary for JSON serialization.
         /// </summary>
+        /// <returns>A dictionary representation of the wireframe.</returns>
         public Dictionary<string, object> ToDictionary()
         {
             var dict = new Dictionary<string, object>
@@ -306,17 +353,45 @@ namespace PostHogUnity.SessionReplay
     /// </summary>
     public class RRStyle
     {
+        /// <summary>
+        /// Text color CSS value.
+        /// </summary>
         public string Color { get; set; }
+
+        /// <summary>
+        /// Background color CSS value.
+        /// </summary>
         public string BackgroundColor { get; set; }
+
+        /// <summary>
+        /// Border width in pixels.
+        /// </summary>
         public int? BorderWidth { get; set; }
+
+        /// <summary>
+        /// Border radius in pixels.
+        /// </summary>
         public int? BorderRadius { get; set; }
+
+        /// <summary>
+        /// Border color CSS value.
+        /// </summary>
         public string BorderColor { get; set; }
+
+        /// <summary>
+        /// Font size in pixels.
+        /// </summary>
         public int? FontSize { get; set; }
+
+        /// <summary>
+        /// Font family name.
+        /// </summary>
         public string FontFamily { get; set; }
 
         /// <summary>
         /// Converts the style to a dictionary for JSON serialization.
         /// </summary>
+        /// <returns>A dictionary representation of the style.</returns>
         public Dictionary<string, object> ToDictionary()
         {
             var dict = new Dictionary<string, object>();
@@ -388,6 +463,7 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Converts to dictionary for JSON serialization.
         /// </summary>
+        /// <returns>A dictionary representation of the network sample.</returns>
         public Dictionary<string, object> ToDictionary()
         {
             return new Dictionary<string, object>
@@ -432,6 +508,7 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Converts to dictionary for JSON serialization.
         /// </summary>
+        /// <returns>A dictionary representation of the log entry.</returns>
         public Dictionary<string, object> ToDictionary()
         {
             var dict = new Dictionary<string, object>

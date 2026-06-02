@@ -19,6 +19,7 @@ namespace PostHogUnity
         readonly object _lock = new();
         List<string> _eventIds;
 
+        /// <inheritdoc />
         public void Initialize(string basePath)
         {
             // basePath is ignored for PlayerPrefs
@@ -92,6 +93,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void SaveEvent(string id, string jsonData)
         {
             lock (_lock)
@@ -125,6 +127,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public string LoadEvent(string id)
         {
             lock (_lock)
@@ -148,6 +151,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void DeleteEvent(string id)
         {
             lock (_lock)
@@ -166,6 +170,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public IReadOnlyList<string> GetEventIds()
         {
             lock (_lock)
@@ -174,6 +179,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public int GetEventCount()
         {
             lock (_lock)
@@ -182,6 +188,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void Clear()
         {
             lock (_lock)
@@ -205,6 +212,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public void SaveState(string key, string jsonData)
         {
             try
@@ -219,6 +227,7 @@ namespace PostHogUnity
             }
         }
 
+        /// <inheritdoc />
         public string LoadState(string key)
         {
             try
@@ -237,6 +246,7 @@ namespace PostHogUnity
             return null;
         }
 
+        /// <inheritdoc />
         public void DeleteState(string key)
         {
             try

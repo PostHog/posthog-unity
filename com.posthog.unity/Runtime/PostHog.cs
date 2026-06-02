@@ -13,6 +13,8 @@ namespace PostHogUnity
         /// <summary>
         /// Initializes the PostHog SDK with the given configuration.
         /// </summary>
+        /// <param name="config">Configuration containing the project API key, host, and SDK options.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when numeric configuration values are outside their allowed ranges.</exception>
         public static void Setup(PostHogConfig config) => PostHogSDK.Setup(config);
 
         /// <summary>
@@ -38,6 +40,8 @@ namespace PostHogUnity
         /// <summary>
         /// Captures an event with the given name and optional properties.
         /// </summary>
+        /// <param name="eventName">Name of the event to capture.</param>
+        /// <param name="properties">Optional event properties to send with the event.</param>
         public static void Capture(
             string eventName,
             Dictionary<string, object> properties = null
@@ -46,6 +50,8 @@ namespace PostHogUnity
         /// <summary>
         /// Captures a screen view event.
         /// </summary>
+        /// <param name="screenName">Name of the screen or scene being viewed.</param>
+        /// <param name="properties">Optional properties to include with the screen view event.</param>
         public static void Screen(
             string screenName,
             Dictionary<string, object> properties = null
@@ -94,11 +100,15 @@ namespace PostHogUnity
         /// <summary>
         /// Creates an alias linking the current distinct ID to another ID.
         /// </summary>
+        /// <param name="alias">The alternate distinct ID to associate with the current user.</param>
         public static void Alias(string alias) => PostHogSDK.Alias(alias);
 
         /// <summary>
         /// Associates the current user with a group.
         /// </summary>
+        /// <param name="groupType">Type of group, such as "company" or "team".</param>
+        /// <param name="groupKey">Unique identifier for the group.</param>
+        /// <param name="groupProperties">Optional properties to set on the group profile.</param>
         public static void Group(
             string groupType,
             string groupKey,
@@ -108,11 +118,14 @@ namespace PostHogUnity
         /// <summary>
         /// Registers a super property that will be sent with every event.
         /// </summary>
+        /// <param name="key">Property name to register.</param>
+        /// <param name="value">Property value to send with future events.</param>
         public static void Register(string key, object value) => PostHogSDK.Register(key, value);
 
         /// <summary>
         /// Unregisters a super property.
         /// </summary>
+        /// <param name="key">Property name to remove.</param>
         public static void Unregister(string key) => PostHogSDK.Unregister(key);
 
         /// <summary>
