@@ -1,3 +1,6 @@
+// Portions of this file are derived from getsentry/sentry-unity by Sentry
+// Licensed under the MIT License
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
