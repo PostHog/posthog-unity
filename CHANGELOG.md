@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+### Patch Changes
+
+- b2c5925: update license files and add source headers
+
 ## 0.2.3
 
 ### Patch Changes

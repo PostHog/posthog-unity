@@ -10,6 +10,6 @@ namespace PostHogUnity
         /// <summary>
         /// The current SDK version.
         /// </summary>
-        public const string Version = "0.2.3";
+        public const string Version = "0.2.4";
     }
 }
