@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5
+
+### Patch Changes
+
+- 098fe6b: update licese
+
 ## 0.2.4
 
 ### Patch Changes
