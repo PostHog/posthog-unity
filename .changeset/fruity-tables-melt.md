@@ -2,4 +2,4 @@
 "com.posthog.unity": patch
 ---
 
-update licese
+update license
