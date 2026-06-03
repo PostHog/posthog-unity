@@ -1,5 +1,6 @@
-// Portions of this file are derived from getsentry/sentry-unity by Sentry
-// Licensed under the MIT License
+// Portions of this file are derived from getsentry/sentry-unity
+// Copyright (c) 2021 Sentry
+// Licensed under the MIT License: https://github.com/getsentry/sentry-unity/blob/main/LICENSE.md
 
 using System;
 using System.Collections.Generic;
