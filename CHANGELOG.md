@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- 098fe6b: update licese
+- 098fe6b: update license
 
 ## 0.2.4
 
