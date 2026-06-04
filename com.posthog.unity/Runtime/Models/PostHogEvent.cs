@@ -47,6 +47,8 @@ namespace PostHogUnity
         /// <summary>
         /// Creates a new PostHog event with the specified name and distinct ID.
         /// </summary>
+        /// <param name="eventName">Name of the event.</param>
+        /// <param name="distinctId">Distinct ID associated with the event.</param>
         public PostHogEvent(string eventName, string distinctId)
             : this()
         {
@@ -57,6 +59,9 @@ namespace PostHogUnity
         /// <summary>
         /// Creates a new PostHog event with the specified name, distinct ID, and properties.
         /// </summary>
+        /// <param name="eventName">Name of the event.</param>
+        /// <param name="distinctId">Distinct ID associated with the event.</param>
+        /// <param name="properties">Event properties to copy into the event.</param>
         public PostHogEvent(
             string eventName,
             string distinctId,

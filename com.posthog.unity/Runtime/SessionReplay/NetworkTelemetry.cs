@@ -171,6 +171,11 @@ namespace PostHogUnity.SessionReplay
         /// Records a network request to the session replay telemetry.
         /// Call this after each HTTP request completes if you want it recorded in session replay.
         /// </summary>
+        /// <param name="method">HTTP method, such as GET or POST.</param>
+        /// <param name="url">Request URL.</param>
+        /// <param name="statusCode">HTTP response status code.</param>
+        /// <param name="durationMs">Request duration in milliseconds.</param>
+        /// <param name="responseSize">Response body size in bytes.</param>
         public static void RecordForReplay(
             string method,
             string url,

@@ -10,6 +10,7 @@ namespace PostHogUnity
         /// <summary>
         /// Initializes the storage provider with the given base path.
         /// </summary>
+        /// <param name="basePath">Base directory or platform-specific location for persisted SDK data.</param>
         void Initialize(string basePath);
 
         /// <summary>

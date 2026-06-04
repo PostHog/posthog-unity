@@ -91,8 +91,14 @@ namespace PostHogUnity
         /// <summary>
         /// Implicit conversion to bool.
         /// </summary>
+        /// <param name="value">The feature flag value to evaluate.</param>
+        /// <returns>True when the value is enabled.</returns>
         public static implicit operator bool(FlagValue value) => value.IsEnabled;
 
+        /// <summary>
+        /// Returns the string representation of the flag value.
+        /// </summary>
+        /// <returns>The boolean value, string variant, or "null" when no value exists.</returns>
         public override string ToString()
         {
             if (!_hasValue)
@@ -156,7 +162,7 @@ namespace PostHogUnity
         /// <summary>
         /// Gets the payload deserialized to a specific type using Unity's JsonUtility.
         /// </summary>
-        /// <typeparam name="T">The type to deserialize to (must have [Serializable] attribute)</typeparam>
+        /// <typeparam name="T">The type to deserialize to. Complex types must have the [Serializable] attribute and public fields.</typeparam>
         /// <param name="defaultValue">Default value if deserialization fails</param>
         /// <returns>The deserialized payload or default</returns>
         public T GetPayload<T>(T defaultValue = default)
@@ -208,11 +214,17 @@ namespace PostHogUnity
         /// <summary>
         /// Implicit conversion to bool for easy conditional checks.
         /// </summary>
+        /// <param name="flag">The feature flag to evaluate.</param>
+        /// <returns>True when the flag is enabled.</returns>
         public static implicit operator bool(PostHogFeatureFlag flag)
         {
             return flag?.IsEnabled ?? false;
         }
 
+        /// <summary>
+        /// Returns the string representation of the feature flag.
+        /// </summary>
+        /// <returns>A string containing the flag key and value.</returns>
         public override string ToString()
         {
             return $"PostHogFeatureFlag({_key}: {_value})";

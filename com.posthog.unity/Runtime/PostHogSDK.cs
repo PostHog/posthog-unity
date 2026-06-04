@@ -69,6 +69,8 @@ namespace PostHogUnity
         /// <summary>
         /// Initializes the PostHog SDK with the given configuration.
         /// </summary>
+        /// <param name="config">Configuration containing the project API key, host, and SDK options.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when numeric configuration values are outside their allowed ranges.</exception>
         public static void Setup(PostHogConfig config)
         {
             if (config == null)
@@ -294,6 +296,8 @@ namespace PostHogUnity
         /// <summary>
         /// Captures an event with the given name and optional properties.
         /// </summary>
+        /// <param name="eventName">Name of the event to capture.</param>
+        /// <param name="properties">Optional event properties to send with the event.</param>
         public static void Capture(string eventName, Dictionary<string, object> properties = null)
         {
             if (!EnsureInitialized())
@@ -304,6 +308,8 @@ namespace PostHogUnity
         /// <summary>
         /// Captures a screen view event.
         /// </summary>
+        /// <param name="screenName">Name of the screen or scene being viewed.</param>
+        /// <param name="properties">Optional properties to include with the screen view event.</param>
         public static void Screen(string screenName, Dictionary<string, object> properties = null)
         {
             if (!EnsureInitialized())
@@ -515,6 +521,7 @@ namespace PostHogUnity
         /// <summary>
         /// Creates an alias linking the current distinct ID to another ID.
         /// </summary>
+        /// <param name="alias">The alternate distinct ID to associate with the current user.</param>
         public static void Alias(string alias)
         {
             if (!EnsureInitialized())
@@ -652,6 +659,9 @@ namespace PostHogUnity
         /// <summary>
         /// Associates the current user with a group.
         /// </summary>
+        /// <param name="groupType">Type of group, such as "company" or "team".</param>
+        /// <param name="groupKey">Unique identifier for the group.</param>
+        /// <param name="groupProperties">Optional properties to set on the group profile.</param>
         public static void Group(
             string groupType,
             string groupKey,
@@ -693,6 +703,8 @@ namespace PostHogUnity
         /// <summary>
         /// Registers a super property that will be sent with every event.
         /// </summary>
+        /// <param name="key">Property name to register.</param>
+        /// <param name="value">Property value to send with future events.</param>
         public static void Register(string key, object value)
         {
             if (!EnsureInitialized())
@@ -703,6 +715,7 @@ namespace PostHogUnity
         /// <summary>
         /// Unregisters a super property.
         /// </summary>
+        /// <param name="key">Property name to remove.</param>
         public static void Unregister(string key)
         {
             if (!EnsureInitialized())
@@ -1009,6 +1022,7 @@ namespace PostHogUnity
         /// <summary>
         /// Returns true if session replay is currently active.
         /// </summary>
+        /// <remarks>Returns false when the SDK is not initialized or session replay is not running.</remarks>
         public static bool IsSessionReplayActive
         {
             get
@@ -1022,6 +1036,7 @@ namespace PostHogUnity
         /// <summary>
         /// Starts session replay if it was configured but not yet started.
         /// </summary>
+        /// <remarks>No effect when the SDK is not initialized, session replay is not configured, or replay is already running.</remarks>
         public static void StartSessionReplay()
         {
             if (!EnsureInitialized())
@@ -1032,6 +1047,7 @@ namespace PostHogUnity
         /// <summary>
         /// Stops session replay.
         /// </summary>
+        /// <remarks>No effect when the SDK is not initialized or session replay is not running.</remarks>
         public static void StopSessionReplay()
         {
             if (!EnsureInitialized())
@@ -1043,6 +1059,7 @@ namespace PostHogUnity
         /// Records a network request for session replay telemetry.
         /// Call this after each HTTP request completes to include it in the replay.
         /// </summary>
+        /// <remarks>No effect unless session replay network telemetry is active.</remarks>
         /// <param name="method">HTTP method (GET, POST, etc.)</param>
         /// <param name="url">Request URL</param>
         /// <param name="statusCode">HTTP response status code</param>

@@ -24,12 +24,20 @@ namespace PostHogUnity
         /// </summary>
         public string SentAt { get; set; }
 
+        /// <summary>
+        /// Creates an empty batch payload with the current timestamp.
+        /// </summary>
         public BatchPayload()
         {
             Batch = new List<PostHogEvent>();
             SentAt = DateTime.UtcNow.ToString("o");
         }
 
+        /// <summary>
+        /// Creates a batch payload for the specified API key and events.
+        /// </summary>
+        /// <param name="apiKey">The PostHog project API key.</param>
+        /// <param name="events">Events to include in the batch.</param>
         public BatchPayload(string apiKey, List<PostHogEvent> events)
             : this()
         {

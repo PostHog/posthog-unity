@@ -24,26 +24,26 @@ namespace PostHogUnity
 
         /// <summary>
         /// Number of events to queue before triggering a flush.
-        /// Defaults to 20.
+        /// Must be at least 1. Defaults to 20.
         /// </summary>
         public int FlushAt { get; set; } = 20;
 
         /// <summary>
         /// Interval in seconds between automatic flush attempts.
-        /// Defaults to 30 seconds.
+        /// Must be at least 1. Defaults to 30 seconds.
         /// </summary>
         public int FlushIntervalSeconds { get; set; } = 30;
 
         /// <summary>
         /// Maximum number of events to store in the queue.
         /// Oldest events are dropped when this limit is exceeded.
-        /// Defaults to 1000.
+        /// Must be at least 1. Defaults to 1000.
         /// </summary>
         public int MaxQueueSize { get; set; } = 1000;
 
         /// <summary>
         /// Maximum number of events to send in a single batch request.
-        /// Defaults to 50.
+        /// Must be at least 1. Defaults to 50.
         /// </summary>
         public int MaxBatchSize { get; set; } = 50;
 
@@ -116,10 +116,12 @@ namespace PostHogUnity
         public float FlushOnQuitTimeoutSeconds { get; set; } = 3f;
 
         /// <summary>
-        /// Custom JSON deserializer for feature flag payloads.
-        /// If not set, Unity's JsonUtility is used (which requires [Serializable] and public fields).
-        /// Set this to use a library like Newtonsoft.Json for better compatibility.
+        /// Optional delegate for custom feature flag payload JSON deserialization.
         /// </summary>
+        /// <remarks>
+        /// The delegate receives payload JSON and a target Type, and should return an instance
+        /// of that type. PostHogFeatureFlag.GetPayload&lt;T&gt; uses Unity's JsonUtility.
+        /// </remarks>
         /// <example>
         /// // Using Newtonsoft.Json
         /// config.PayloadDeserializer = (json, type) => JsonConvert.DeserializeObject(json, type);
@@ -136,8 +138,7 @@ namespace PostHogUnity
 
         /// <summary>
         /// Minimum time in milliseconds between capturing exceptions.
-        /// Set to 0 to disable debouncing.
-        /// Defaults to 1000ms (1 second).
+        /// Set to 0 to disable debouncing. Defaults to 1000ms (1 second).
         /// </summary>
         public int ExceptionDebounceIntervalMs { get; set; } = 1000;
 
@@ -160,15 +161,17 @@ namespace PostHogUnity
 
         /// <summary>
         /// Configuration options for session replay.
-        /// Only used when SessionReplay is true.
+        /// Only used when SessionReplay is true. Defaults to a new PostHogSessionReplayConfig.
         /// </summary>
         public PostHogSessionReplayConfig SessionReplayConfig { get; set; } = new();
 
         #endregion
 
         /// <summary>
-        /// Validates the configuration and throws if invalid.
+        /// Validates the configuration and normalizes empty hosts to the default host.
         /// </summary>
+        /// <exception cref="ArgumentException">Thrown when ApiKey is missing.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when queue, batch, flush, or enabled session replay values are outside their allowed ranges.</exception>
         public void Validate()
         {
             if (string.IsNullOrWhiteSpace(ApiKey))
@@ -232,7 +235,7 @@ namespace PostHogUnity
         Always,
 
         /// <summary>
-        /// Only create/update person profiles on identify(), alias(), and group() calls.
+        /// Only create/update person profiles for identified users after IdentifyAsync is called.
         /// This is the default and recommended setting.
         /// </summary>
         IdentifiedOnly,
