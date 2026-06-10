@@ -191,7 +191,7 @@ Set properties used for flag evaluation:
 PostHog.SetPersonPropertiesForFlags(new Dictionary<string, object>
 {
     { "plan", "premium" },
-    { "power_user", true }
+    { "beta_user", true }
 });
 
 // Set group properties for targeting
