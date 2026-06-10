@@ -1,4 +1,4 @@
-# PostHog Unity SDK (BETA)
+# PostHog Unity SDK
 
 The [official PostHog analytics SDK for Unity](https://posthog.com/docs/libraries/unity). Capture events, identify users, and track sessions in your Unity games and applications.
 
@@ -61,7 +61,7 @@ PostHog.Setup(new PostHogConfig
     MaxBatchSize = 50,                      // Max events per request
     CaptureApplicationLifecycleEvents = true,
     CaptureExceptions = true,               // Auto-capture unhandled exceptions
-    SessionReplay = false,                  // Enable session replay (experimental)
+    SessionReplay = false,                  // Enable session replay
     PersonProfiles = PersonProfiles.IdentifiedOnly,
     LogLevel = PostHogLogLevel.Warning
 });
@@ -307,9 +307,7 @@ PostHog.Setup(new PostHogConfig
 });
 ```
 
-## Session Replay (Experimental)
-
-> **Note:** Session replay is an experimental feature of this beta SDK. Performance impact varies significantly depending on your target devices and game complexity. You may need to adjust capture settings (screenshot scale, quality, throttle delay) to find the right balance for your users. We welcome your feedback—please [open an issue](https://github.com/PostHog/posthog-unity/issues) or reach out if you encounter problems or need help tuning for your use case.
+## Session Replay
 
 Record user sessions for replay in PostHog. Session replay captures screenshots of your game at regular intervals along with console logs and network telemetry.
 
