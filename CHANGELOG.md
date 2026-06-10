@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0
+
+### Major Changes
+
+- 3de4a5e: Release PostHog Unity SDK 1.0.0.
+
 ## 0.2.5
 
 ### Patch Changes
