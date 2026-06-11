@@ -34,8 +34,8 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Build solution
-        run: dotnet build posthog-unity.sln --configuration Release --nologo
+      - name: Build package
+        run: ./bin/build
         shell: bash
 
   test:
