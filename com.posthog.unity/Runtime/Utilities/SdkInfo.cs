@@ -9,5 +9,10 @@ namespace PostHogUnity
         /// The SDK library name.
         /// </summary>
         public const string LibraryName = "posthog-unity";
+
+        /// <summary>
+        /// The SDK User-Agent header value.
+        /// </summary>
+        public const string UserAgent = LibraryName + "/" + Version;
     }
 }
