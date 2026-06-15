@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+### Patch Changes
+
+- ecbab8b: Send the SDK User-Agent header on PostHog API requests.
+
 ## 1.0.0
 
 ### Major Changes
