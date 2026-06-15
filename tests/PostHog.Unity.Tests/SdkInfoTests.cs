@@ -7,7 +7,7 @@ namespace PostHogUnity.Tests
         [Fact]
         public void UserAgent_UsesLibraryNameAndVersion()
         {
-            Assert.Equal($"{SdkInfo.LibraryName}/{SdkInfo.Version}", SdkInfo.UserAgent);
+            Assert.Equal("posthog-unity/" + SdkInfo.Version, SdkInfo.UserAgent);
         }
     }
 }
