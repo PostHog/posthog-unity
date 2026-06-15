@@ -134,6 +134,11 @@ namespace PostHogUnity
         public static void Flush() => PostHogSDK.Flush();
 
         /// <summary>
+        /// Public API baseline check probe.
+        /// </summary>
+        public static void PublicApiBaselineProbe() { }
+
+        /// <summary>
         /// Opts out of tracking. No events will be captured.
         /// </summary>
         public static void OptOut() => PostHogSDK.OptOut();
