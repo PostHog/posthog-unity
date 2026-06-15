@@ -36,8 +36,7 @@ namespace PostHogUnity
             var bodyRaw = Encoding.UTF8.GetBytes(json);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json");
+            ApplyDefaultHeaders(request);
             request.timeout = TimeoutSeconds;
 
             yield return request.SendWebRequest();
@@ -170,11 +169,17 @@ namespace PostHogUnity
             var bodyRaw = Encoding.UTF8.GetBytes(json);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json");
+            ApplyDefaultHeaders(request);
             request.timeout = TimeoutSeconds;
 
             return request;
+        }
+
+        static void ApplyDefaultHeaders(UnityWebRequest request)
+        {
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Accept", "application/json");
+            request.SetRequestHeader("User-Agent", SdkInfo.UserAgent);
         }
     }
 }
