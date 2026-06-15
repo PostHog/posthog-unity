@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+#/ Usage: bin/check-public-api [-u|--update]
+#/ Description: Checks the Unity runtime assembly public API against the committed snapshot.
+#/ Options:
+#/   -u, --update   Regenerate the public API snapshot.
+set -euo pipefail
+source bin/helpers/_utils.sh
+set_source_and_root_dir
+
+SNAPSHOT_FILE="./api/PostHog.PublicAPI.Shipped.txt"
+WORK_DIR="./obj/public-api"
+RUNTIME_PROJECT_DIR="$WORK_DIR/runtime"
+GENERATOR_PROJECT_DIR="$WORK_DIR/generator"
+RUNTIME_PROJECT="$RUNTIME_PROJECT_DIR/PostHog.PublicApi.Runtime.csproj"
+GENERATOR_PROJECT="$GENERATOR_PROJECT_DIR/PostHog.PublicApi.Generator.csproj"
+GENERATED_API="$WORK_DIR/PostHog.PublicAPI.Generated.txt"
+RUNTIME_ASSEMBLY="$RUNTIME_PROJECT_DIR/bin/Release/netstandard2.1/PostHog.dll"
+
+update=false
+
+while (( "$#" )); do
+    key="$1"
+    shift
+    case "$key" in
+        -u|--update)
+            update=true
+            ;;
+        -\?|-h|--help)
+            grep '^#/' <"$0" | cut -c4-
+            exit
+            ;;
+        *)
+            echo "Unknown option: $key" 1>&2
+            exit 1
+            ;;
+    esac
+done
+
+if ! type dotnet >/dev/null 2>&1; then
+    echo ".NET CLI is not installed!" 1>&2
+    exit 1
+fi
+
+rm -rf "$WORK_DIR"
+mkdir -p "$RUNTIME_PROJECT_DIR" "$GENERATOR_PROJECT_DIR"
+
+cat > "$RUNTIME_PROJECT" << PROJ
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>PostHog</AssemblyName>
+    <RootNamespace>PostHogUnity</RootNamespace>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>NU1701</NoWarn>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$root_dir/com.posthog.unity/Runtime/**/*.cs" LinkBase="Runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Unity3D.SDK" Version="2021.1.14.1" />
+  </ItemGroup>
+</Project>
+PROJ
+
+cat > "$GENERATOR_PROJECT" << 'PROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="PublicApiGenerator" Version="11.5.0" />
+  </ItemGroup>
+</Project>
+PROJ
+
+cat > "$GENERATOR_PROJECT_DIR/Program.cs" << 'CS'
+using System.Reflection;
+using System.Runtime.Loader;
+using PublicApiGenerator;
+
+if (args.Length != 1)
+{
+    Console.Error.WriteLine("Usage: generator <assembly-path>");
+    return 1;
+}
+
+var assemblyPath = Path.GetFullPath(args[0]);
+var loadContext = new ApiAssemblyLoadContext(assemblyPath);
+var assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
+
+var publicApi = assembly.GeneratePublicApi(
+    new ApiGeneratorOptions
+    {
+        IncludeAssemblyAttributes = false,
+    }
+);
+
+Console.Write(publicApi.Replace("\r\n", "\n").TrimEnd());
+Console.WriteLine();
+return 0;
+
+sealed class ApiAssemblyLoadContext : AssemblyLoadContext
+{
+    readonly AssemblyDependencyResolver _resolver;
+
+    public ApiAssemblyLoadContext(string assemblyPath)
+        : base(isCollectible: false)
+    {
+        _resolver = new AssemblyDependencyResolver(assemblyPath);
+    }
+
+    protected override Assembly? Load(AssemblyName assemblyName)
+    {
+        var assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
+        return assemblyPath is null ? null : LoadFromAssemblyPath(assemblyPath);
+    }
+}
+CS
+
+echo "Building runtime assembly for public API generation..."
+dotnet build "$RUNTIME_PROJECT" --configuration Release --nologo --verbosity quiet
+
+echo "Generating public API snapshot..."
+dotnet run --project "$GENERATOR_PROJECT" --no-launch-profile -- "$RUNTIME_ASSEMBLY" > "$GENERATED_API"
+
+if $update; then
+    mkdir -p "$(dirname "$SNAPSHOT_FILE")"
+    cp "$GENERATED_API" "$SNAPSHOT_FILE"
+    echo "Updated $SNAPSHOT_FILE"
+    exit
+fi
+
+if [[ ! -f "$SNAPSHOT_FILE" ]]; then
+    echo "Public API snapshot is missing: $SNAPSHOT_FILE" 1>&2
+    echo "Run './bin/check-public-api --update' to create it." 1>&2
+    exit 1
+fi
+
+if diff -u "$SNAPSHOT_FILE" "$GENERATED_API"; then
+    echo "Public API snapshot is up to date."
+else
+    echo "Public API has changed. Run './bin/check-public-api --update' if this change is intentional." 1>&2
+    exit 1
+fi

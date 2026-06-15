@@ -1,0 +1,375 @@
+namespace PostHogUnity
+{
+    [System.Serializable]
+    public class BatchPayload
+    {
+        public BatchPayload() { }
+        public BatchPayload(string apiKey, System.Collections.Generic.List<PostHogUnity.PostHogEvent> events) { }
+        public string ApiKey { get; set; }
+        public System.Collections.Generic.List<PostHogUnity.PostHogEvent> Batch { get; set; }
+        public string SentAt { get; set; }
+    }
+    public class FileStorageProvider : PostHogUnity.IStorageProvider
+    {
+        public FileStorageProvider() { }
+        public void Clear() { }
+        public void DeleteEvent(string id) { }
+        public void DeleteState(string key) { }
+        public void FlushPendingWrites() { }
+        public int GetEventCount() { }
+        public System.Collections.Generic.IReadOnlyList<string> GetEventIds() { }
+        public void Initialize(string basePath) { }
+        public string LoadEvent(string id) { }
+        public string LoadState(string key) { }
+        public void SaveEvent(string id, string jsonData) { }
+        public void SaveState(string key, string jsonData) { }
+    }
+    public readonly struct FlagValue
+    {
+        public bool BoolValue { get; }
+        public bool HasValue { get; }
+        public bool IsBool { get; }
+        public bool IsEnabled { get; }
+        public bool IsString { get; }
+        public string StringValue { get; }
+        public override string ToString() { }
+        public static bool op_Implicit(PostHogUnity.FlagValue value) { }
+    }
+    public interface IStorageProvider
+    {
+        void Clear();
+        void DeleteEvent(string id);
+        void DeleteState(string key);
+        int GetEventCount();
+        System.Collections.Generic.IReadOnlyList<string> GetEventIds();
+        void Initialize(string basePath);
+        string LoadEvent(string id);
+        string LoadState(string key);
+        void SaveEvent(string id, string jsonData);
+        void SaveState(string key, string jsonData);
+    }
+    public enum PersonProfiles
+    {
+        Always = 0,
+        IdentifiedOnly = 1,
+        Never = 2,
+    }
+    public class PlayerPrefsStorageProvider : PostHogUnity.IStorageProvider
+    {
+        public PlayerPrefsStorageProvider() { }
+        public void Clear() { }
+        public void DeleteEvent(string id) { }
+        public void DeleteState(string key) { }
+        public int GetEventCount() { }
+        public System.Collections.Generic.IReadOnlyList<string> GetEventIds() { }
+        public void Initialize(string basePath) { }
+        public string LoadEvent(string id) { }
+        public string LoadState(string key) { }
+        public void SaveEvent(string id, string jsonData) { }
+        public void SaveState(string key, string jsonData) { }
+    }
+    public static class PostHog
+    {
+        public static string DistinctId { get; }
+        public static bool IsInitialized { get; }
+        public static bool IsOptedOut { get; }
+        public static event System.Action OnFeatureFlagsLoaded;
+        public static void Alias(string alias) { }
+        public static void Capture(string eventName, System.Collections.Generic.Dictionary<string, object> properties = null) { }
+        public static void CaptureException(System.Exception exception, System.Collections.Generic.Dictionary<string, object> properties = null) { }
+        public static void Flush() { }
+        public static PostHogUnity.PostHogFeatureFlag GetFeatureFlag(string key) { }
+        public static void Group(string groupType, string groupKey, System.Collections.Generic.Dictionary<string, object> groupProperties = null) { }
+        public static System.Threading.Tasks.Task IdentifyAsync(string distinctId) { }
+        public static System.Threading.Tasks.Task IdentifyAsync(string distinctId, System.Collections.Generic.Dictionary<string, object> userProperties, System.Collections.Generic.Dictionary<string, object> userPropertiesSetOnce = null) { }
+        public static bool IsFeatureEnabled(string key, bool defaultValue = false) { }
+        public static void OptIn() { }
+        public static void OptOut() { }
+        public static void Register(string key, object value) { }
+        public static System.Threading.Tasks.Task ReloadFeatureFlagsAsync() { }
+        public static System.Threading.Tasks.Task ResetAsync() { }
+        public static void ResetGroupPropertiesForFlags(bool reloadFeatureFlags = true) { }
+        public static void ResetGroupPropertiesForFlags(string groupType, bool reloadFeatureFlags = true) { }
+        public static void ResetPersonPropertiesForFlags(bool reloadFeatureFlags = true) { }
+        public static void Screen(string screenName, System.Collections.Generic.Dictionary<string, object> properties = null) { }
+        public static void SetGroupPropertiesForFlags(string groupType, System.Collections.Generic.Dictionary<string, object> properties, bool reloadFeatureFlags = true) { }
+        public static void SetPersonPropertiesForFlags(System.Collections.Generic.Dictionary<string, object> properties, bool reloadFeatureFlags = true) { }
+        public static void Setup(PostHogUnity.PostHogConfig config) { }
+        public static void Shutdown() { }
+        public static void Unregister(string key) { }
+    }
+    [System.Serializable]
+    public class PostHogConfig
+    {
+        public PostHogConfig() { }
+        public string ApiKey { get; set; }
+        public bool CaptureApplicationLifecycleEvents { get; set; }
+        public bool CaptureExceptions { get; set; }
+        public bool CaptureExceptionsInEditor { get; set; }
+        public int ExceptionDebounceIntervalMs { get; set; }
+        public int FlushAt { get; set; }
+        public int FlushIntervalSeconds { get; set; }
+        public bool FlushOnQuit { get; set; }
+        public float FlushOnQuitTimeoutSeconds { get; set; }
+        public string Host { get; set; }
+        public PostHogUnity.PostHogLogLevel LogLevel { get; set; }
+        public int MaxBatchSize { get; set; }
+        public int MaxQueueSize { get; set; }
+        public System.Action OnFeatureFlagsLoaded { get; set; }
+        public System.Func<string, System.Type, object> PayloadDeserializer { get; set; }
+        public PostHogUnity.PersonProfiles PersonProfiles { get; set; }
+        public bool PreloadFeatureFlags { get; set; }
+        public bool ReuseAnonymousId { get; set; }
+        public bool SendDefaultPersonPropertiesForFlags { get; set; }
+        public bool SendFeatureFlagEvent { get; set; }
+        public bool SessionReplay { get; set; }
+        public PostHogUnity.SessionReplay.PostHogSessionReplayConfig SessionReplayConfig { get; set; }
+        public void Validate() { }
+    }
+    [System.Serializable]
+    public class PostHogEvent
+    {
+        public PostHogEvent() { }
+        public PostHogEvent(string eventName, string distinctId) { }
+        public PostHogEvent(string eventName, string distinctId, System.Collections.Generic.Dictionary<string, object> properties) { }
+        public string DistinctId { get; set; }
+        public string Event { get; set; }
+        public System.Collections.Generic.Dictionary<string, object> Properties { get; set; }
+        public string Timestamp { get; set; }
+        public string Uuid { get; set; }
+    }
+    public class PostHogFeatureFlag
+    {
+        public static readonly PostHogUnity.PostHogFeatureFlag Null;
+        public bool HasPayload { get; }
+        public bool IsEnabled { get; }
+        public string Key { get; }
+        public PostHogUnity.FlagValue Value { get; }
+        public T GetPayload<T>(T defaultValue = default) { }
+        public PostHogUnity.PostHogJson GetPayloadJson() { }
+        public string GetVariant(string defaultValue = null) { }
+        public override string ToString() { }
+        public static bool op_Implicit(PostHogUnity.PostHogFeatureFlag flag) { }
+    }
+    public class PostHogJson
+    {
+        public static readonly PostHogUnity.PostHogJson Null;
+        public PostHogJson(object value) { }
+        public int Count { get; }
+        public bool IsArray { get; }
+        public bool IsBool { get; }
+        public bool IsNull { get; }
+        public bool IsNumber { get; }
+        public bool IsObject { get; }
+        public bool IsString { get; }
+        public PostHogUnity.PostHogJson this[string key] { get; }
+        public PostHogUnity.PostHogJson this[int index] { get; }
+        public System.Collections.Generic.IEnumerable<string> Keys { get; }
+        public object RawValue { get; }
+        public System.Collections.Generic.Dictionary<string, PostHogUnity.PostHogJson> AsDictionary() { }
+        public System.Collections.Generic.List<int> AsIntList() { }
+        public System.Collections.Generic.List<PostHogUnity.PostHogJson> AsList() { }
+        public System.Collections.Generic.List<string> AsStringList() { }
+        public bool ContainsKey(string key) { }
+        public override bool Equals(object obj) { }
+        public bool GetBool(bool defaultValue = false) { }
+        public double GetDouble(double defaultValue = 0) { }
+        public float GetFloat(float defaultValue = 0) { }
+        public override int GetHashCode() { }
+        public int GetInt(int defaultValue = 0) { }
+        public long GetLong(long defaultValue = 0) { }
+        public PostHogUnity.PostHogJson GetPath(string path) { }
+        public string GetString(string defaultValue = null) { }
+        public override string ToString() { }
+        public static PostHogUnity.PostHogJson Parse(string json) { }
+        public static string op_Implicit(PostHogUnity.PostHogJson json) { }
+        public static int op_Implicit(PostHogUnity.PostHogJson json) { }
+        public static bool op_Implicit(PostHogUnity.PostHogJson json) { }
+        public static float op_Implicit(PostHogUnity.PostHogJson json) { }
+        public static double op_Implicit(PostHogUnity.PostHogJson json) { }
+        public static bool? op_Implicit(PostHogUnity.PostHogJson json) { }
+    }
+    public enum PostHogLogLevel
+    {
+        Debug = 0,
+        Info = 1,
+        Warning = 2,
+        Error = 3,
+        None = 4,
+    }
+    public class PostHogSDK : UnityEngine.MonoBehaviour
+    {
+        public PostHogSDK() { }
+        public static string DistinctId { get; }
+        public static PostHogUnity.PostHogSDK Instance { get; }
+        public static bool IsInitialized { get; }
+        public static bool IsOptedOut { get; }
+        public static bool IsSessionReplayActive { get; }
+        public static event System.Action OnFeatureFlagsLoaded;
+        public static void Alias(string alias) { }
+        public static void Capture(string eventName, System.Collections.Generic.Dictionary<string, object> properties = null) { }
+        public static void CaptureException(System.Exception exception, System.Collections.Generic.Dictionary<string, object> properties = null) { }
+        public static void Flush() { }
+        public static PostHogUnity.PostHogFeatureFlag GetFeatureFlag(string key) { }
+        public static void Group(string groupType, string groupKey, System.Collections.Generic.Dictionary<string, object> groupProperties = null) { }
+        public static System.Threading.Tasks.Task IdentifyAsync(string distinctId) { }
+        public static System.Threading.Tasks.Task IdentifyAsync(string distinctId, System.Collections.Generic.Dictionary<string, object> userProperties, System.Collections.Generic.Dictionary<string, object> userPropertiesSetOnce = null) { }
+        public static bool IsFeatureEnabled(string key, bool defaultValue = false) { }
+        public static void OptIn() { }
+        public static void OptOut() { }
+        public static void RecordNetworkRequest(string method, string url, int statusCode, long durationMs, long responseSize = 0) { }
+        public static void Register(string key, object value) { }
+        public static System.Threading.Tasks.Task ReloadFeatureFlagsAsync() { }
+        public static System.Threading.Tasks.Task ResetAsync() { }
+        public static void ResetGroupPropertiesForFlags(bool reloadFeatureFlags = true) { }
+        public static void ResetGroupPropertiesForFlags(string groupType, bool reloadFeatureFlags = true) { }
+        public static void ResetPersonPropertiesForFlags(bool reloadFeatureFlags = true) { }
+        public static void Screen(string screenName, System.Collections.Generic.Dictionary<string, object> properties = null) { }
+        public static void SetGroupPropertiesForFlags(string groupType, System.Collections.Generic.Dictionary<string, object> properties, bool reloadFeatureFlags = true) { }
+        public static void SetPersonPropertiesForFlags(System.Collections.Generic.Dictionary<string, object> properties, bool reloadFeatureFlags = true) { }
+        public static void Setup(PostHogUnity.PostHogConfig config) { }
+        public static void Shutdown() { }
+        public static void StartSessionReplay() { }
+        public static void StopSessionReplay() { }
+        public static void Unregister(string key) { }
+    }
+    [UnityEngine.CreateAssetMenu(fileName="PostHogSettings", menuName="PostHog/Settings", order=1)]
+    public class PostHogSettings : UnityEngine.ScriptableObject
+    {
+        public PostHogSettings() { }
+        public string ApiKey { get; }
+        public bool AutoInitialize { get; }
+        public bool CaptureApplicationLifecycleEvents { get; }
+        public bool CaptureExceptions { get; }
+        public bool CaptureExceptionsInEditor { get; }
+        public int ExceptionDebounceIntervalMs { get; }
+        public int FlushAt { get; }
+        public int FlushIntervalSeconds { get; }
+        public string Host { get; }
+        public PostHogUnity.PostHogLogLevel LogLevel { get; }
+        public int MaxBatchSize { get; }
+        public int MaxQueueSize { get; }
+        public PostHogUnity.PersonProfiles PersonProfiles { get; }
+        public bool PreloadFeatureFlags { get; }
+        public bool ReuseAnonymousId { get; }
+        public bool SendDefaultPersonPropertiesForFlags { get; }
+        public bool SendFeatureFlagEvent { get; }
+        public PostHogUnity.PostHogConfig ToConfig() { }
+        public static PostHogUnity.PostHogSettings Load() { }
+    }
+    public static class UuidV7
+    {
+        public static string Generate() { }
+        public static byte[] GenerateBytes() { }
+    }
+}
+namespace PostHogUnity.SessionReplay
+{
+    public class LogEntry
+    {
+        public LogEntry() { }
+        public string Level { get; set; }
+        public string Message { get; set; }
+        public string StackTrace { get; set; }
+        public long Timestamp { get; set; }
+        public System.Collections.Generic.Dictionary<string, object> ToDictionary() { }
+    }
+    public class NetworkSample
+    {
+        public NetworkSample() { }
+        public long Duration { get; set; }
+        public string EntryType { get; set; }
+        public string InitiatorType { get; set; }
+        public string Method { get; set; }
+        public string Name { get; set; }
+        public int ResponseStatus { get; set; }
+        public long Timestamp { get; set; }
+        public long TransferSize { get; set; }
+        public System.Collections.Generic.Dictionary<string, object> ToDictionary() { }
+    }
+    public static class NetworkTelemetryExtensions
+    {
+        public static void RecordForReplay(string method, string url, int statusCode, long durationMs, long responseSize = 0) { }
+    }
+    [System.Serializable]
+    public class PostHogSessionReplayConfig
+    {
+        public PostHogSessionReplayConfig() { }
+        public bool CaptureLogs { get; set; }
+        public bool CaptureNetworkTelemetry { get; set; }
+        public int FlushAt { get; set; }
+        public int FlushIntervalSeconds { get; set; }
+        public int MaxQueueSize { get; set; }
+        public PostHogUnity.SessionReplay.SessionReplayLogLevel MinLogLevel { get; set; }
+        public int ScreenshotQuality { get; set; }
+        public float ScreenshotScale { get; set; }
+        public float ThrottleDelaySeconds { get; set; }
+        public void Validate() { }
+    }
+    public class RREvent
+    {
+        public RREvent() { }
+        public System.Collections.Generic.Dictionary<string, object> Data { get; set; }
+        public long Timestamp { get; set; }
+        public int Type { get; set; }
+        public System.Collections.Generic.Dictionary<string, object> ToDictionary() { }
+        public static PostHogUnity.SessionReplay.RREvent CreateConsoleLogPlugin(System.Collections.Generic.List<PostHogUnity.SessionReplay.LogEntry> logs, long timestamp) { }
+        public static PostHogUnity.SessionReplay.RREvent CreateFullSnapshot(PostHogUnity.SessionReplay.RRWireframe wireframe, long timestamp) { }
+        public static PostHogUnity.SessionReplay.RREvent CreateMeta(int width, int height, string screenName, long timestamp) { }
+        public static PostHogUnity.SessionReplay.RREvent CreateNetworkPlugin(System.Collections.Generic.List<PostHogUnity.SessionReplay.NetworkSample> requests, long timestamp) { }
+        public static PostHogUnity.SessionReplay.RREvent CreatePointerEvent(float x, float y, int touchType, long timestamp) { }
+    }
+    public static class RREventType
+    {
+        public const int FullSnapshot = 2;
+        public const int IncrementalSnapshot = 3;
+        public const int Meta = 4;
+        public const int Plugin = 6;
+    }
+    public class RRStyle
+    {
+        public RRStyle() { }
+        public string BackgroundColor { get; set; }
+        public string BorderColor { get; set; }
+        public int? BorderRadius { get; set; }
+        public int? BorderWidth { get; set; }
+        public string Color { get; set; }
+        public string FontFamily { get; set; }
+        public int? FontSize { get; set; }
+        public System.Collections.Generic.Dictionary<string, object> ToDictionary() { }
+    }
+    public static class RRTouchType
+    {
+        public const int TouchEnd = 9;
+        public const int TouchMove = 3;
+        public const int TouchStart = 7;
+    }
+    public class RRWireframe
+    {
+        public RRWireframe() { }
+        public string Base64 { get; set; }
+        public int Height { get; set; }
+        public int Id { get; set; }
+        public PostHogUnity.SessionReplay.RRStyle Style { get; set; }
+        public string Type { get; set; }
+        public int Width { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public System.Collections.Generic.Dictionary<string, object> ToDictionary() { }
+        public static PostHogUnity.SessionReplay.RRWireframe CreateScreenshot(int width, int height, string base64Data) { }
+    }
+    public static class RRWireframeType
+    {
+        public const string Image = "image";
+        public const string Input = "input";
+        public const string Rectangle = "div";
+        public const string Screenshot = "screenshot";
+        public const string Text = "text";
+    }
+    public enum SessionReplayLogLevel
+    {
+        Log = 0,
+        Warning = 1,
+        Error = 2,
+    }
+}
