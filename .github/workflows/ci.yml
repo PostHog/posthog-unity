@@ -38,6 +38,12 @@ jobs:
         run: ./bin/build
         shell: bash
 
+      - name: Check public API
+        # If this fails because the public API changed intentionally, regenerate the baseline with:
+        # ./bin/check-public-api --update
+        run: ./bin/check-public-api
+        shell: bash
+
   test:
     runs-on: ubuntu-latest
     steps:
