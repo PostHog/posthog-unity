@@ -110,7 +110,7 @@ namespace PostHogUnity
             }
 
             // Reset tracking on reload (same flag/value should trigger new event)
-            _flagCalledTracker.Reset();
+            ResetFlagCallTracking();
 
             monoBehaviour.StartCoroutine(FetchFlagsCoroutine(onComplete));
         }
