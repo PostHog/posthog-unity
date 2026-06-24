@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+### Patch Changes
+
+- 90f44a2: Reset feature flag called tracking on shutdown.
+
 ## 1.0.1
 
 ### Patch Changes
