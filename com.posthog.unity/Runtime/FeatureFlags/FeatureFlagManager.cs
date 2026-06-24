@@ -110,7 +110,7 @@ namespace PostHogUnity
             }
 
             // Reset tracking on reload (same flag/value should trigger new event)
-            _flagCalledTracker.Reset();
+            ResetFlagCallTracking();
 
             monoBehaviour.StartCoroutine(FetchFlagsCoroutine(onComplete));
         }
@@ -274,12 +274,20 @@ namespace PostHogUnity
         }
 
         /// <summary>
+        /// Clears the flag call tracking cache.
+        /// </summary>
+        public void ResetFlagCallTracking()
+        {
+            _flagCalledTracker.Reset();
+        }
+
+        /// <summary>
         /// Clears the flag cache.
         /// </summary>
         public void Clear()
         {
             _flagCache.Clear();
-            _flagCalledTracker.Reset();
+            ResetFlagCallTracking();
         }
 
         #region Person Properties for Flags
