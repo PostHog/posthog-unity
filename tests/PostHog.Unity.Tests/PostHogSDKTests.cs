@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using PostHogUnity;
 using UnityEngine;
 
@@ -5,6 +7,32 @@ namespace PostHogUnity.Tests
 {
     public class PostHogSDKTests
     {
+        sealed class InMemoryStorageProvider : IStorageProvider
+        {
+            readonly Dictionary<string, string> _events = new();
+            readonly Dictionary<string, string> _state = new();
+
+            public void Initialize(string basePath) { }
+
+            public void SaveEvent(string id, string jsonData) => _events[id] = jsonData;
+
+            public string LoadEvent(string id) => _events.GetValueOrDefault(id);
+
+            public void DeleteEvent(string id) => _events.Remove(id);
+
+            public IReadOnlyList<string> GetEventIds() => _events.Keys.ToList();
+
+            public int GetEventCount() => _events.Count;
+
+            public void Clear() => _events.Clear();
+
+            public void SaveState(string key, string jsonData) => _state[key] = jsonData;
+
+            public string LoadState(string key) => _state.GetValueOrDefault(key);
+
+            public void DeleteState(string key) => _state.Remove(key);
+        }
+
         sealed class NoopLogHandler : ILogHandler
         {
             public void LogException(Exception exception, UnityEngine.Object context) { }
@@ -64,6 +92,49 @@ namespace PostHogUnity.Tests
 
                 Assert.Null(exception);
                 Assert.False(PostHog.IsInitialized);
+            }
+        }
+
+        public class TheShutdownMethod
+        {
+            [Fact]
+            public void ResetsFeatureFlagCallTracking()
+            {
+                var capturedFlagCalledEvents = 0;
+                var config = new PostHogConfig { ApiKey = "test-api-key" };
+                var manager = new FeatureFlagManager(
+                    config,
+                    new InMemoryStorageProvider(),
+                    new NetworkClient(config),
+                    () => "user-1",
+                    () => "anon-1",
+                    () => new Dictionary<string, string>(),
+                    (_, _) => capturedFlagCalledEvents++
+                );
+
+                manager.TrackFlagCalled("beta-feature", true);
+                manager.TrackFlagCalled("beta-feature", true);
+                Assert.Equal(1, capturedFlagCalledEvents);
+
+                var sdk = (PostHogSDK)RuntimeHelpers.GetUninitializedObject(typeof(PostHogSDK));
+                var featureFlagManagerField = typeof(PostHogSDK).GetField(
+                    "_featureFlagManager",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+                Assert.NotNull(featureFlagManagerField);
+                featureFlagManagerField.SetValue(sdk, manager);
+
+                var shutdownInternalMethod = typeof(PostHogSDK).GetMethod(
+                    "ShutdownInternal",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+                Assert.NotNull(shutdownInternalMethod);
+
+                var exception = Record.Exception(() => shutdownInternalMethod.Invoke(sdk, null));
+
+                Assert.Null(exception);
+                manager.TrackFlagCalled("beta-feature", true);
+                Assert.Equal(2, capturedFlagCalledEvents);
             }
         }
 
