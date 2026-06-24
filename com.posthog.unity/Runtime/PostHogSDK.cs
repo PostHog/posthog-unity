@@ -269,6 +269,8 @@ namespace PostHogUnity
             // Stop exception tracking
             _exceptionManager?.Stop();
 
+            _featureFlagManager?.ResetFlagCallTracking();
+
             // Flush before stopping to ensure final events are sent
             _eventQueue?.Flush();
             _eventQueue?.Stop();
@@ -616,6 +618,7 @@ namespace PostHogUnity
         {
             _identityManager.Reset();
             _sessionManager.StartNewSession();
+            _featureFlagManager.ResetFlagCallTracking();
 
             // Clear cached person and group properties for flags (matches iOS/Android behavior)
             _featureFlagManager.ResetPersonPropertiesForFlags(
