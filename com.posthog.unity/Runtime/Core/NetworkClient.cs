@@ -14,6 +14,8 @@ namespace PostHogUnity
     {
         readonly PostHogConfig _config;
         const int TimeoutSeconds = 10;
+        const int FeatureFlagsMaxAttempts = 3;
+        const float FeatureFlagsInitialRetryDelaySeconds = 0.5f;
 
         public NetworkClient(PostHogConfig config)
         {
@@ -73,33 +75,51 @@ namespace PostHogUnity
             Action<string, int> onComplete
         )
         {
-            using var request = CreateFlagsRequest(
-                _config.ApiKey,
-                _config.Host,
-                distinctId,
-                anonymousId,
-                groups,
-                personProperties,
-                groupProperties
-            );
-
-            PostHogLogger.Debug($"Fetching feature flags from {request.url}");
-
-            yield return request.SendWebRequest();
-
-            int statusCode = (int)request.responseCode;
-
-            if (request.result == UnityWebRequest.Result.Success)
+            for (var attempt = 1; attempt <= FeatureFlagsMaxAttempts; attempt++)
             {
-                PostHogLogger.Debug($"Feature flags fetched successfully (status: {statusCode})");
-                onComplete?.Invoke(request.downloadHandler.text, statusCode);
-            }
-            else
-            {
-                PostHogLogger.Warning(
-                    $"Feature flags fetch failed: {request.error} (status: {statusCode})"
-                );
-                onComplete?.Invoke(null, statusCode);
+                using (var request = CreateFlagsRequest(
+                    _config.ApiKey,
+                    _config.Host,
+                    distinctId,
+                    anonymousId,
+                    groups,
+                    personProperties,
+                    groupProperties
+                ))
+                {
+                    PostHogLogger.Debug($"Fetching feature flags from {request.url}");
+
+                    yield return request.SendWebRequest();
+
+                    int statusCode = (int)request.responseCode;
+
+                    if (request.result == UnityWebRequest.Result.Success)
+                    {
+                        PostHogLogger.Debug(
+                            $"Feature flags fetched successfully (status: {statusCode})"
+                        );
+                        onComplete?.Invoke(request.downloadHandler.text, statusCode);
+                        yield break;
+                    }
+
+                    if (
+                        !ShouldRetryFeatureFlagsRequest(request.result, statusCode)
+                        || attempt == FeatureFlagsMaxAttempts
+                    )
+                    {
+                        PostHogLogger.Warning(
+                            $"Feature flags fetch failed: {request.error} (status: {statusCode})"
+                        );
+                        onComplete?.Invoke(null, statusCode);
+                        yield break;
+                    }
+
+                    PostHogLogger.Warning(
+                        $"Feature flags fetch failed: {request.error} (status: {statusCode}); retrying ({attempt}/{FeatureFlagsMaxAttempts})"
+                    );
+                }
+
+                yield return new WaitForSeconds(GetFeatureFlagsRetryDelaySeconds(attempt));
             }
         }
 
@@ -107,6 +127,19 @@ namespace PostHogUnity
         {
             var host = _config.Host.TrimEnd('/');
             return $"{host}/batch";
+        }
+
+        internal static bool ShouldRetryFeatureFlagsRequest(
+            UnityWebRequest.Result result,
+            int statusCode
+        )
+        {
+            return result == UnityWebRequest.Result.ConnectionError && statusCode == 0;
+        }
+
+        static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)
+        {
+            return FeatureFlagsInitialRetryDelaySeconds * (1 << (failedAttempt - 1));
         }
 
         /// <summary>
