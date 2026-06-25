@@ -8,14 +8,27 @@ namespace PostHogUnity.Tests
         public class TheFeatureFlagsRetryPolicy
         {
             [Fact]
-            public void RetriesConnectionErrorsWithoutHttpStatus()
+            public void RetriesTransientConnectionErrorsWithoutHttpStatus()
             {
                 var shouldRetry = NetworkClient.ShouldRetryFeatureFlagsRequest(
                     UnityWebRequest.Result.ConnectionError,
-                    0
+                    0,
+                    "Connection reset by peer"
                 );
 
                 Assert.True(shouldRetry);
+            }
+
+            [Fact]
+            public void DoesNotRetryConnectionRefused()
+            {
+                var shouldRetry = NetworkClient.ShouldRetryFeatureFlagsRequest(
+                    UnityWebRequest.Result.ConnectionError,
+                    0,
+                    "Cannot connect to destination host"
+                );
+
+                Assert.False(shouldRetry);
             }
 
             [Theory]

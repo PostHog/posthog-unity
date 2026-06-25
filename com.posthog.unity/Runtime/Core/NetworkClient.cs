@@ -103,7 +103,7 @@ namespace PostHogUnity
                     }
 
                     if (
-                        !ShouldRetryFeatureFlagsRequest(request.result, statusCode)
+                        !ShouldRetryFeatureFlagsRequest(request.result, statusCode, request.error)
                         || attempt == FeatureFlagsMaxAttempts
                     )
                     {
@@ -131,10 +131,26 @@ namespace PostHogUnity
 
         internal static bool ShouldRetryFeatureFlagsRequest(
             UnityWebRequest.Result result,
-            int statusCode
+            int statusCode,
+            string error = null
         )
         {
-            return result == UnityWebRequest.Result.ConnectionError && statusCode == 0;
+            if (result != UnityWebRequest.Result.ConnectionError || statusCode != 0)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(error))
+            {
+                return true;
+            }
+
+            var lowerError = error.ToLowerInvariant();
+            return lowerError.Contains("timeout")
+                   || lowerError.Contains("timed out")
+                   || lowerError.Contains("reset")
+                   || lowerError.Contains("eof")
+                   || lowerError.Contains("connection lost");
         }
 
         static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)
