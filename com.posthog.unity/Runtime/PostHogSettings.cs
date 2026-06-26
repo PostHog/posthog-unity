@@ -89,7 +89,9 @@ namespace PostHogUnity
         [SerializeField]
         bool _preloadFeatureFlags = true;
 
-        [Tooltip("Maximum number of retries for feature flag requests after transient network errors. Set to 0 to disable.")]
+        [Tooltip(
+            "Maximum number of retries for feature flag requests after transient network errors. Set to 0 to disable."
+        )]
         [Min(0)]
         [SerializeField]
         int _featureFlagRequestMaxRetries = 1;

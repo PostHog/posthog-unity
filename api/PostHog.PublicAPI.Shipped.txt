@@ -107,6 +107,7 @@ namespace PostHogUnity
         public bool CaptureExceptions { get; set; }
         public bool CaptureExceptionsInEditor { get; set; }
         public int ExceptionDebounceIntervalMs { get; set; }
+        public int FeatureFlagRequestMaxRetries { get; set; }
         public int FlushAt { get; set; }
         public int FlushIntervalSeconds { get; set; }
         public bool FlushOnQuit { get; set; }
@@ -243,6 +244,7 @@ namespace PostHogUnity
         public bool CaptureExceptions { get; }
         public bool CaptureExceptionsInEditor { get; }
         public int ExceptionDebounceIntervalMs { get; }
+        public int FeatureFlagRequestMaxRetries { get; }
         public int FlushAt { get; }
         public int FlushIntervalSeconds { get; }
         public string Host { get; }
