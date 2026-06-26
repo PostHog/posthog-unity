@@ -89,6 +89,11 @@ namespace PostHogUnity
         [SerializeField]
         bool _preloadFeatureFlags = true;
 
+        [Tooltip("Maximum number of retries for feature flag requests after transient network errors. Set to 0 to disable.")]
+        [Min(0)]
+        [SerializeField]
+        int _featureFlagRequestMaxRetries = 1;
+
         [Tooltip(
             "Whether to send $feature_flag_called events when flags are accessed. "
                 + "Required for experiments and A/B test tracking."
@@ -182,6 +187,11 @@ namespace PostHogUnity
         public bool PreloadFeatureFlags => _preloadFeatureFlags;
 
         /// <summary>
+        /// Maximum number of retries for feature flag requests after transient network errors.
+        /// </summary>
+        public int FeatureFlagRequestMaxRetries => _featureFlagRequestMaxRetries;
+
+        /// <summary>
         /// Whether to send $feature_flag_called events when flags are accessed.
         /// </summary>
         public bool SendFeatureFlagEvent => _sendFeatureFlagEvent;
@@ -234,6 +244,7 @@ namespace PostHogUnity
                 LogLevel = _logLevel,
                 ReuseAnonymousId = _reuseAnonymousId,
                 PreloadFeatureFlags = _preloadFeatureFlags,
+                FeatureFlagRequestMaxRetries = _featureFlagRequestMaxRetries,
                 SendFeatureFlagEvent = _sendFeatureFlagEvent,
                 SendDefaultPersonPropertiesForFlags = _sendDefaultPersonPropertiesForFlags,
                 CaptureExceptions = _captureExceptions,
@@ -251,6 +262,7 @@ namespace PostHogUnity
             _flushIntervalSeconds = Mathf.Max(1, _flushIntervalSeconds);
             _maxQueueSize = Mathf.Max(1, _maxQueueSize);
             _maxBatchSize = Mathf.Max(1, _maxBatchSize);
+            _featureFlagRequestMaxRetries = Mathf.Max(0, _featureFlagRequestMaxRetries);
             _exceptionDebounceIntervalMs = Mathf.Max(0, _exceptionDebounceIntervalMs);
         }
     }

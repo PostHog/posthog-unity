@@ -14,7 +14,6 @@ namespace PostHogUnity
     {
         readonly PostHogConfig _config;
         const int TimeoutSeconds = 10;
-        const int FeatureFlagsMaxAttempts = 3;
         const float FeatureFlagsInitialRetryDelaySeconds = 0.5f;
 
         public NetworkClient(PostHogConfig config)
@@ -75,7 +74,8 @@ namespace PostHogUnity
             Action<string, int> onComplete
         )
         {
-            for (var attempt = 1; attempt <= FeatureFlagsMaxAttempts; attempt++)
+            var maxAttempts = Math.Max(1, _config.FeatureFlagRequestMaxRetries + 1);
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 using (var request = CreateFlagsRequest(
                     _config.ApiKey,
@@ -104,7 +104,7 @@ namespace PostHogUnity
 
                     if (
                         !ShouldRetryFeatureFlagsRequest(request.result, statusCode, request.error)
-                        || attempt == FeatureFlagsMaxAttempts
+                        || attempt == maxAttempts
                     )
                     {
                         PostHogLogger.Warning(
@@ -115,7 +115,7 @@ namespace PostHogUnity
                     }
 
                     PostHogLogger.Warning(
-                        $"Feature flags fetch failed: {request.error} (status: {statusCode}); retrying ({attempt}/{FeatureFlagsMaxAttempts})"
+                        $"Feature flags fetch failed: {request.error} (status: {statusCode}); retrying ({attempt}/{maxAttempts})"
                     );
                 }
 
