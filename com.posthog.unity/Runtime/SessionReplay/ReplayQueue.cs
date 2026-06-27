@@ -317,22 +317,30 @@ namespace PostHogUnity.SessionReplay
             var json = JsonSerializer.Serialize(batchList);
             var bodyBytes = Encoding.UTF8.GetBytes(json);
 
-            byte[] compressedBytes = null;
-            bool useCompression = bodyBytes.Length > 1024;
+            var payloadBytes = bodyBytes;
+            var useCompression = false;
 
-            if (useCompression)
+            if (bodyBytes.Length > 1024)
             {
-                compressedBytes = CompressGzip(bodyBytes);
+                try
+                {
+                    payloadBytes = CompressGzip(bodyBytes);
+                    useCompression = true;
+                }
+                catch (Exception ex)
+                {
+                    PostHogLogger.Warning(
+                        $"Failed to gzip replay batch, sending uncompressed: {ex.Message}"
+                    );
+                }
             }
 
             PostHogLogger.Debug(
-                $"Sending replay batch to {url} (size: {(useCompression ? compressedBytes.Length : bodyBytes.Length)} bytes)"
+                $"Sending replay batch to {url} (size: {payloadBytes.Length} bytes)"
             );
 
             using var request = new UnityWebRequest(url, "POST");
-            request.uploadHandler = new UploadHandlerRaw(
-                useCompression ? compressedBytes : bodyBytes
-            );
+            request.uploadHandler = new UploadHandlerRaw(payloadBytes);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Accept", "application/json");
