@@ -317,24 +317,7 @@ namespace PostHogUnity.SessionReplay
             var json = JsonSerializer.Serialize(batchList);
             var bodyBytes = Encoding.UTF8.GetBytes(json);
 
-            var payloadBytes = bodyBytes;
-            var useCompression = false;
-
-            if (bodyBytes.Length > 1024)
-            {
-                try
-                {
-                    payloadBytes = CompressGzip(bodyBytes);
-                    useCompression = true;
-                }
-                catch (Exception ex)
-                {
-                    PostHogLogger.Warning(
-                        $"Failed to gzip replay batch, sending uncompressed: {ex.Message}"
-                    );
-                }
-            }
-
+            var (payloadBytes, useCompression) = PreparePayload(bodyBytes, CompressGzip);
             PostHogLogger.Debug(
                 $"Sending replay batch to {url} (size: {payloadBytes.Length} bytes)"
             );
@@ -367,6 +350,29 @@ namespace PostHogUnity.SessionReplay
                     $"Replay batch send failed: {request.error} (status: {statusCode})"
                 );
                 onComplete?.Invoke(false, statusCode);
+            }
+        }
+
+        internal static (byte[] PayloadBytes, bool UseCompression) PreparePayload(
+            byte[] bodyBytes,
+            Func<byte[], byte[]> compressGzip
+        )
+        {
+            if (bodyBytes.Length <= 1024)
+            {
+                return (bodyBytes, false);
+            }
+
+            try
+            {
+                return (compressGzip(bodyBytes), true);
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Warning(
+                    $"Failed to gzip replay batch, sending uncompressed: {ex.Message}"
+                );
+                return (bodyBytes, false);
             }
         }
 
