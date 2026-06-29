@@ -358,11 +358,6 @@ namespace PostHogUnity.SessionReplay
             Func<byte[], byte[]> compressGzip
         )
         {
-            if (bodyBytes.Length <= 1024)
-            {
-                return (bodyBytes, false);
-            }
-
             try
             {
                 return (compressGzip(bodyBytes), true);
