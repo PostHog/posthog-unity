@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4
+
+### Patch Changes
+
+- cef6044: Fall back to uncompressed replay uploads when local gzip compression fails.
+
 ## 1.0.3
 
 ### Patch Changes
