@@ -317,22 +317,13 @@ namespace PostHogUnity.SessionReplay
             var json = JsonSerializer.Serialize(batchList);
             var bodyBytes = Encoding.UTF8.GetBytes(json);
 
-            byte[] compressedBytes = null;
-            bool useCompression = bodyBytes.Length > 1024;
-
-            if (useCompression)
-            {
-                compressedBytes = CompressGzip(bodyBytes);
-            }
-
+            var (payloadBytes, useCompression) = PreparePayload(bodyBytes, CompressGzip);
             PostHogLogger.Debug(
-                $"Sending replay batch to {url} (size: {(useCompression ? compressedBytes.Length : bodyBytes.Length)} bytes)"
+                $"Sending replay batch to {url} (size: {payloadBytes.Length} bytes)"
             );
 
             using var request = new UnityWebRequest(url, "POST");
-            request.uploadHandler = new UploadHandlerRaw(
-                useCompression ? compressedBytes : bodyBytes
-            );
+            request.uploadHandler = new UploadHandlerRaw(payloadBytes);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Accept", "application/json");
@@ -359,6 +350,24 @@ namespace PostHogUnity.SessionReplay
                     $"Replay batch send failed: {request.error} (status: {statusCode})"
                 );
                 onComplete?.Invoke(false, statusCode);
+            }
+        }
+
+        internal static (byte[] PayloadBytes, bool UseCompression) PreparePayload(
+            byte[] bodyBytes,
+            Func<byte[], byte[]> compressGzip
+        )
+        {
+            try
+            {
+                return (compressGzip(bodyBytes), true);
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Warning(
+                    $"Failed to gzip replay batch, sending uncompressed: {ex.Message}"
+                );
+                return (bodyBytes, false);
             }
         }
 
