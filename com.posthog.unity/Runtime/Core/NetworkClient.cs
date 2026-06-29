@@ -13,11 +13,49 @@ namespace PostHogUnity
     class NetworkClient
     {
         readonly PostHogConfig _config;
+        readonly FeatureFlagsRequestFactory _featureFlagsRequestFactory;
+        readonly FeatureFlagsRetryDelayFactory _featureFlagsRetryDelayFactory;
         const int TimeoutSeconds = 10;
+        const float FeatureFlagsInitialRetryDelaySeconds = 0.3f;
+
+        internal delegate IFeatureFlagsRequest FeatureFlagsRequestFactory(
+            string apiKey,
+            string host,
+            string distinctId,
+            string anonymousId,
+            Dictionary<string, string> groups,
+            IReadOnlyDictionary<string, object> personProperties,
+            Dictionary<string, Dictionary<string, object>> groupProperties
+        );
+
+        internal delegate object FeatureFlagsRetryDelayFactory(int failedAttempt);
+
+        internal interface IFeatureFlagsRequest : IDisposable
+        {
+            string Url { get; }
+            UnityWebRequest.Result Result { get; }
+            long ResponseCode { get; }
+            string Error { get; }
+            string Text { get; }
+            object Send();
+        }
 
         public NetworkClient(PostHogConfig config)
+            : this(
+                config,
+                CreateFeatureFlagsRequest,
+                failedAttempt => new WaitForSeconds(GetFeatureFlagsRetryDelaySeconds(failedAttempt))
+            ) { }
+
+        internal NetworkClient(
+            PostHogConfig config,
+            FeatureFlagsRequestFactory featureFlagsRequestFactory,
+            FeatureFlagsRetryDelayFactory featureFlagsRetryDelayFactory
+        )
         {
             _config = config;
+            _featureFlagsRequestFactory = featureFlagsRequestFactory;
+            _featureFlagsRetryDelayFactory = featureFlagsRetryDelayFactory;
         }
 
         /// <summary>
@@ -73,33 +111,54 @@ namespace PostHogUnity
             Action<string, int> onComplete
         )
         {
-            using var request = CreateFlagsRequest(
-                _config.ApiKey,
-                _config.Host,
-                distinctId,
-                anonymousId,
-                groups,
-                personProperties,
-                groupProperties
-            );
-
-            PostHogLogger.Debug($"Fetching feature flags from {request.url}");
-
-            yield return request.SendWebRequest();
-
-            int statusCode = (int)request.responseCode;
-
-            if (request.result == UnityWebRequest.Result.Success)
+            var maxAttempts = Math.Max(1, _config.FeatureFlagRequestMaxRetries + 1);
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                PostHogLogger.Debug($"Feature flags fetched successfully (status: {statusCode})");
-                onComplete?.Invoke(request.downloadHandler.text, statusCode);
-            }
-            else
-            {
-                PostHogLogger.Warning(
-                    $"Feature flags fetch failed: {request.error} (status: {statusCode})"
-                );
-                onComplete?.Invoke(null, statusCode);
+                using (
+                    var request = _featureFlagsRequestFactory(
+                        _config.ApiKey,
+                        _config.Host,
+                        distinctId,
+                        anonymousId,
+                        groups,
+                        personProperties,
+                        groupProperties
+                    )
+                )
+                {
+                    PostHogLogger.Debug($"Fetching feature flags from {request.Url}");
+
+                    yield return request.Send();
+
+                    int statusCode = (int)request.ResponseCode;
+
+                    if (request.Result == UnityWebRequest.Result.Success)
+                    {
+                        PostHogLogger.Debug(
+                            $"Feature flags fetched successfully (status: {statusCode})"
+                        );
+                        onComplete?.Invoke(request.Text, statusCode);
+                        yield break;
+                    }
+
+                    if (
+                        !ShouldRetryFeatureFlagsRequest(request.Result, statusCode, request.Error)
+                        || attempt == maxAttempts
+                    )
+                    {
+                        PostHogLogger.Warning(
+                            $"Feature flags fetch failed: {request.Error} (status: {statusCode})"
+                        );
+                        onComplete?.Invoke(null, statusCode);
+                        yield break;
+                    }
+
+                    PostHogLogger.Warning(
+                        $"Feature flags fetch failed: {request.Error} (status: {statusCode}); retrying ({attempt}/{maxAttempts})"
+                    );
+                }
+
+                yield return _featureFlagsRetryDelayFactory(attempt);
             }
         }
 
@@ -107,6 +166,84 @@ namespace PostHogUnity
         {
             var host = _config.Host.TrimEnd('/');
             return $"{host}/batch";
+        }
+
+        internal static bool ShouldRetryFeatureFlagsRequest(
+            UnityWebRequest.Result result,
+            int statusCode,
+            string error = null
+        )
+        {
+            if (result != UnityWebRequest.Result.ConnectionError || statusCode != 0)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(error))
+            {
+                return true;
+            }
+
+            var lowerError = error.ToLowerInvariant();
+            return lowerError.Contains("timeout")
+                || lowerError.Contains("timed out")
+                || lowerError.Contains("reset")
+                || lowerError.Contains("eof")
+                || lowerError.Contains("connection lost");
+        }
+
+        internal static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)
+        {
+            return FeatureFlagsInitialRetryDelaySeconds * (1 << (failedAttempt - 1));
+        }
+
+        static IFeatureFlagsRequest CreateFeatureFlagsRequest(
+            string apiKey,
+            string host,
+            string distinctId,
+            string anonymousId,
+            Dictionary<string, string> groups,
+            IReadOnlyDictionary<string, object> personProperties,
+            Dictionary<string, Dictionary<string, object>> groupProperties
+        )
+        {
+            return new UnityWebRequestFeatureFlagsRequest(
+                CreateFlagsRequest(
+                    apiKey,
+                    host,
+                    distinctId,
+                    anonymousId,
+                    groups,
+                    personProperties,
+                    groupProperties
+                )
+            );
+        }
+
+        sealed class UnityWebRequestFeatureFlagsRequest : IFeatureFlagsRequest
+        {
+            readonly UnityWebRequest _request;
+
+            public UnityWebRequestFeatureFlagsRequest(UnityWebRequest request)
+            {
+                _request = request;
+            }
+
+            public string Url => _request.url;
+            public UnityWebRequest.Result Result => _request.result;
+            public long ResponseCode => _request.responseCode;
+            public string Error => _request.error;
+            public string Text => _request.downloadHandler.text;
+
+            public object Send()
+            {
+                return _request.SendWebRequest();
+            }
+
+            public void Dispose()
+            {
+                _request.Dispose();
+            }
         }
 
         /// <summary>
