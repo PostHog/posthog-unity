@@ -165,7 +165,7 @@ sealed class AdapterState : IDisposable
 
         var body = new Dictionary<string, object?>
         {
-            ["token"] = _apiKey,
+            ["api_key"] = _apiKey,
             ["distinct_id"] = request.DistinctId ?? "",
             ["person_properties"] = personProperties,
             ["groups"] = request.Groups ?? new Dictionary<string, JsonElement>(),
