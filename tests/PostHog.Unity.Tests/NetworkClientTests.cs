@@ -72,6 +72,20 @@ namespace PostHogUnity.Tests
 
                 Assert.False(shouldRetry);
             }
+
+            [Theory]
+            [InlineData(1, 0.3)]
+            [InlineData(2, 0.6)]
+            [InlineData(3, 1.2)]
+            public void DoublesRetryDelayFromThreeHundredMilliseconds(
+                int failedAttempt,
+                double expectedDelaySeconds
+            )
+            {
+                var delaySeconds = NetworkClient.GetFeatureFlagsRetryDelaySeconds(failedAttempt);
+
+                Assert.Equal(expectedDelaySeconds, delaySeconds, precision: 3);
+            }
         }
 
         public class TheFetchFeatureFlagsRetryLoop

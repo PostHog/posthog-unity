@@ -16,7 +16,7 @@ namespace PostHogUnity
         readonly FeatureFlagsRequestFactory _featureFlagsRequestFactory;
         readonly FeatureFlagsRetryDelayFactory _featureFlagsRetryDelayFactory;
         const int TimeoutSeconds = 10;
-        const float FeatureFlagsInitialRetryDelaySeconds = 0.5f;
+        const float FeatureFlagsInitialRetryDelaySeconds = 0.3f;
 
         internal delegate IFeatureFlagsRequest FeatureFlagsRequestFactory(
             string apiKey,
@@ -192,7 +192,7 @@ namespace PostHogUnity
                 || lowerError.Contains("connection lost");
         }
 
-        static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)
+        internal static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)
         {
             return FeatureFlagsInitialRetryDelaySeconds * (1 << (failedAttempt - 1));
         }
