@@ -59,13 +59,16 @@ app.MapPost("/get_feature_flag", async (HttpRequest request) =>
 app.MapPost("/reset", (HttpRequest request) =>
 {
     var testId = request.Query["test_id"].FirstOrDefault() ?? "__global__";
-    states.TryRemove(testId, out _);
+    if (states.TryRemove(testId, out var state))
+    {
+        state.Dispose();
+    }
     return Results.Json(new { success = true });
 });
 
 app.Run();
 
-sealed class AdapterState
+sealed class AdapterState : IDisposable
 {
     readonly object _lock = new();
     readonly HttpClient _http = new();
@@ -138,7 +141,7 @@ sealed class AdapterState
                 return 0;
             }
 
-            batch = _queue.Take(_flushAt > 0 ? Math.Min(_queue.Count, Math.Max(_flushAt, _queue.Count)) : _queue.Count).ToList();
+            batch = _queue.ToList();
             _queue.Clear();
         }
 
@@ -220,6 +223,8 @@ sealed class AdapterState
             );
         }
     }
+
+    public void Dispose() => _http.Dispose();
 
     async Task<bool> SendWithRetriesAsync(List<Dictionary<string, object?>> batch, string path)
     {
