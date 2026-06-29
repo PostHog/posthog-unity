@@ -82,6 +82,12 @@ namespace PostHogUnity
         public bool PreloadFeatureFlags { get; set; } = true;
 
         /// <summary>
+        /// Maximum number of retries for feature flag requests after transient network errors.
+        /// Defaults to 1. Set to 0 to disable feature flag request retries.
+        /// </summary>
+        public int FeatureFlagRequestMaxRetries { get; set; } = 1;
+
+        /// <summary>
         /// Whether to send $feature_flag_called events when flags are accessed.
         /// Required for experiments and A/B test tracking.
         /// Defaults to true.

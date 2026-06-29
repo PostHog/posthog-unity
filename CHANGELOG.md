@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.4
+
+### Patch Changes
+
+- cef6044: Fall back to uncompressed replay uploads when local gzip compression fails.
+
+## 1.0.3
+
+### Patch Changes
+
+- 3aac6bc: Retry feature flag requests after transient network errors only. The feature flag request retry count defaults to 1 and can be set to 0 to disable retries.
+
 ## 1.0.2
 
 ### Patch Changes
