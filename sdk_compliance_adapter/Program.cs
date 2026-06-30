@@ -110,6 +110,8 @@ sealed class AdapterState : IDisposable
     {
         var uuid = Guid.NewGuid().ToString();
         var properties = request.Properties?.ToDictionary(kvp => kvp.Key, kvp => (object?)kvp.Value) ?? new Dictionary<string, object?>();
+        properties["distinct_id"] = request.DistinctId ?? "";
+        properties["token"] = _apiKey;
         properties["$lib"] = Constants.SdkName;
         properties["$lib_version"] = Constants.SdkVersion;
 
