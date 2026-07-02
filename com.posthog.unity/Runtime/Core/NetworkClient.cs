@@ -174,6 +174,14 @@ namespace PostHogUnity
             string error = null
         )
         {
+            if (
+                result == UnityWebRequest.Result.ProtocolError
+                && IsRetryableFeatureFlagsStatusCode(statusCode)
+            )
+            {
+                return true;
+            }
+
             if (result != UnityWebRequest.Result.ConnectionError || statusCode != 0)
             {
                 return false;
@@ -190,6 +198,11 @@ namespace PostHogUnity
                 || lowerError.Contains("reset")
                 || lowerError.Contains("eof")
                 || lowerError.Contains("connection lost");
+        }
+
+        static bool IsRetryableFeatureFlagsStatusCode(int statusCode)
+        {
+            return statusCode == 502 || statusCode == 504;
         }
 
         internal static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)

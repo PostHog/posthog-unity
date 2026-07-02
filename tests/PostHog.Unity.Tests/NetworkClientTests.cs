@@ -33,11 +33,24 @@ namespace PostHogUnity.Tests
             }
 
             [Theory]
+            [InlineData(502)]
+            [InlineData(504)]
+            public void RetriesRetryableHttpStatusErrors(int statusCode)
+            {
+                var shouldRetry = NetworkClient.ShouldRetryFeatureFlagsRequest(
+                    UnityWebRequest.Result.ProtocolError,
+                    statusCode
+                );
+
+                Assert.True(shouldRetry);
+            }
+
+            [Theory]
             [InlineData(408)]
             [InlineData(429)]
             [InlineData(500)]
             [InlineData(503)]
-            public void DoesNotRetryHttpStatusErrors(int statusCode)
+            public void DoesNotRetryOtherHttpStatusErrors(int statusCode)
             {
                 var shouldRetry = NetworkClient.ShouldRetryFeatureFlagsRequest(
                     UnityWebRequest.Result.ProtocolError,
@@ -51,7 +64,9 @@ namespace PostHogUnity.Tests
             [InlineData(408)]
             [InlineData(429)]
             [InlineData(500)]
+            [InlineData(502)]
             [InlineData(503)]
+            [InlineData(504)]
             public void DoesNotRetryConnectionErrorsWithHttpStatus(int statusCode)
             {
                 var shouldRetry = NetworkClient.ShouldRetryFeatureFlagsRequest(
@@ -127,6 +142,53 @@ namespace PostHogUnity.Tests
                 Assert.All(sentRequests, request => Assert.True(request.WasSent));
                 Assert.Equal(1, completions);
                 Assert.Equal("{\"featureFlags\":{}}", response);
+                Assert.Equal(200, statusCode);
+            }
+
+            [Theory]
+            [InlineData(502)]
+            [InlineData(504)]
+            public void RetriesRetryableHttpStatusErrorsUntilSuccess(int retryableStatusCode)
+            {
+                var requests = new Queue<FakeFeatureFlagsRequest>(
+                    new[]
+                    {
+                        FakeFeatureFlagsRequest.ProtocolError(
+                            "HTTP status error",
+                            retryableStatusCode
+                        ),
+                        FakeFeatureFlagsRequest.Success(
+                            "{\"featureFlags\":{\"example\":true}}",
+                            200
+                        ),
+                    }
+                );
+                var sentRequests = new List<FakeFeatureFlagsRequest>();
+                var client = CreateRetryClient(1, requests, sentRequests);
+                string response = null;
+                var statusCode = 0;
+                var completions = 0;
+
+                RunCoroutine(
+                    client.FetchFeatureFlags(
+                        "user-1",
+                        null,
+                        null,
+                        null,
+                        null,
+                        (json, status) =>
+                        {
+                            completions++;
+                            response = json;
+                            statusCode = status;
+                        }
+                    )
+                );
+
+                Assert.Equal(2, sentRequests.Count);
+                Assert.All(sentRequests, request => Assert.True(request.WasSent));
+                Assert.Equal(1, completions);
+                Assert.Equal("{\"featureFlags\":{\"example\":true}}", response);
                 Assert.Equal(200, statusCode);
             }
 
@@ -250,6 +312,16 @@ namespace PostHogUnity.Tests
                         responseCode,
                         null,
                         text
+                    );
+                }
+
+                public static FakeFeatureFlagsRequest ProtocolError(string error, long responseCode)
+                {
+                    return new FakeFeatureFlagsRequest(
+                        UnityWebRequest.Result.ProtocolError,
+                        responseCode,
+                        error,
+                        null
                     );
                 }
 
