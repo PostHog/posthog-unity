@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.5
+
+### Patch Changes
+
+- 4909c8a: Retry remote feature flag requests after transient 502 and 504 responses.
+
 ## 1.0.4
 
 ### Patch Changes
