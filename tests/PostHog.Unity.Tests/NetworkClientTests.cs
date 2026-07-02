@@ -232,6 +232,54 @@ namespace PostHogUnity.Tests
                 Assert.Equal(0, statusCode);
             }
 
+            [Theory]
+            [InlineData(502)]
+            [InlineData(504)]
+            public void ReportsNullOnlyAfterRetryableHttpStatusRetriesAreExhausted(
+                int retryableStatusCode
+            )
+            {
+                var maxRetries = 2;
+                var requests = new Queue<FakeFeatureFlagsRequest>();
+                for (var i = 0; i <= maxRetries; i++)
+                {
+                    requests.Enqueue(
+                        FakeFeatureFlagsRequest.ProtocolError(
+                            "HTTP status error",
+                            retryableStatusCode
+                        )
+                    );
+                }
+
+                var sentRequests = new List<FakeFeatureFlagsRequest>();
+                var client = CreateRetryClient(maxRetries, requests, sentRequests);
+                string response = "not completed";
+                var statusCode = -1;
+                var completions = 0;
+
+                RunCoroutine(
+                    client.FetchFeatureFlags(
+                        "user-1",
+                        null,
+                        null,
+                        null,
+                        null,
+                        (json, status) =>
+                        {
+                            completions++;
+                            response = json;
+                            statusCode = status;
+                        }
+                    )
+                );
+
+                Assert.Equal(maxRetries + 1, sentRequests.Count);
+                Assert.All(sentRequests, request => Assert.True(request.WasSent));
+                Assert.Equal(1, completions);
+                Assert.Null(response);
+                Assert.Equal(retryableStatusCode, statusCode);
+            }
+
             static NetworkClient CreateRetryClient(
                 int maxRetries,
                 Queue<FakeFeatureFlagsRequest> requests,
