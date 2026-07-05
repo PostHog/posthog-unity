@@ -232,6 +232,7 @@ sealed class AdapterState : IDisposable
                 if (statusCode >= 200 && statusCode < 300)
                 {
                     var text = await response.Content.ReadAsStringAsync();
+                    response.Dispose();
                     if (!string.IsNullOrWhiteSpace(text))
                     {
                         using var doc = JsonDocument.Parse(text);
@@ -249,15 +250,16 @@ sealed class AdapterState : IDisposable
             {
                 lock (_lock) _lastError = ex.Message;
             }
-            finally
-            {
-                response?.Dispose();
-            }
 
             if (!IsRetryableFeatureFlagStatus(statusCode) || attempt >= _maxRetries)
             {
+                response?.Dispose();
                 return null;
             }
+
+            var delay = RetryDelay(response, attempt);
+            response?.Dispose();
+            await Task.Delay(delay);
         }
 
         return null;
@@ -351,7 +353,7 @@ sealed class AdapterState : IDisposable
 
     static bool IsRetryable(int statusCode) => statusCode == 0 || statusCode == 408 || statusCode == 429 || statusCode >= 500;
 
-    static bool IsRetryableFeatureFlagStatus(int statusCode) => statusCode == 502 || statusCode == 504;
+    static bool IsRetryableFeatureFlagStatus(int statusCode) => statusCode == 0 || statusCode == 502 || statusCode == 504;
 
     static TimeSpan RetryDelay(HttpResponseMessage? response, int attempt)
     {
