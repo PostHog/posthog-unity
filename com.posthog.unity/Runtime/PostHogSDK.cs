@@ -414,14 +414,40 @@ namespace PostHogUnity
                 eventProps["$groups"] = groups;
             }
 
-            // Create and enqueue the event
+            // Create the fully enriched event, then give customers a final chance to modify or drop it.
             var evt = new PostHogEvent(eventName, _identityManager.DistinctId, eventProps);
+            evt = RunBeforeSend(evt);
+            if (evt == null)
+            {
+                PostHogLogger.Debug($"Event dropped by beforeSend: {eventName}");
+                return;
+            }
+
             _eventQueue.Enqueue(evt);
 
             // Touch session
             _sessionManager.Touch();
 
             PostHogLogger.Debug($"Captured event: {eventName}");
+        }
+
+        PostHogEvent RunBeforeSend(PostHogEvent evt)
+        {
+            var beforeSend = _config.BeforeSend;
+            if (beforeSend == null)
+            {
+                return evt;
+            }
+
+            try
+            {
+                return beforeSend(evt);
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("beforeSend callback threw", ex);
+                return null;
+            }
         }
 
         void AddSdkProperties(Dictionary<string, object> properties)
