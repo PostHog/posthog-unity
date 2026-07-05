@@ -103,6 +103,7 @@ namespace PostHogUnity
     {
         public PostHogConfig() { }
         public string ApiKey { get; set; }
+        public System.Func<PostHogUnity.PostHogEvent, PostHogUnity.PostHogEvent> BeforeSend { get; set; }
         public bool CaptureApplicationLifecycleEvents { get; set; }
         public bool CaptureExceptions { get; set; }
         public bool CaptureExceptionsInEditor { get; set; }

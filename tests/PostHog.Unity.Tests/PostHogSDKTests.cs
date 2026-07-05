@@ -138,6 +138,91 @@ namespace PostHogUnity.Tests
             }
         }
 
+        public class TheBeforeSendCallback
+        {
+            [Fact]
+            public void CanModifyFullyEnrichedEventBeforeItIsQueued()
+            {
+                var sawFullyEnrichedEvent = false;
+                var config = new PostHogConfig
+                {
+                    ApiKey = "test-api-key",
+                    BeforeSend = evt =>
+                    {
+                        sawFullyEnrichedEvent = evt.Properties.ContainsKey("$lib")
+                            && evt.Properties.ContainsKey("$lib_version")
+                            && evt.Properties.ContainsKey("$session_id")
+                            && evt.Properties.ContainsKey("source");
+                        evt.Properties.Remove("secret");
+                        evt.Properties["before_send"] = true;
+                        return evt;
+                    },
+                };
+                var sdk = CreateSdk(config);
+                var evt = new PostHogEvent(
+                    "before-send-event",
+                    "distinct-id",
+                    new Dictionary<string, object>
+                    {
+                        ["$lib"] = "posthog-unity",
+                        ["$lib_version"] = "1.0.0",
+                        ["$session_id"] = "session-id",
+                        ["source"] = "super",
+                        ["secret"] = "remove",
+                    }
+                );
+
+                var processed = RunBeforeSend(sdk, evt);
+
+                Assert.True(sawFullyEnrichedEvent);
+                Assert.NotNull(processed);
+                Assert.True((bool)processed.Properties["before_send"]);
+                Assert.False(processed.Properties.ContainsKey("secret"));
+            }
+
+            [Fact]
+            public void CanDropEventBeforeItIsQueued()
+            {
+                var config = new PostHogConfig
+                {
+                    ApiKey = "test-api-key",
+                    BeforeSend = _ => null,
+                };
+                var sdk = CreateSdk(config);
+
+                var processed = RunBeforeSend(sdk, new PostHogEvent("drop-me", "distinct-id"));
+
+                Assert.Null(processed);
+            }
+
+            static PostHogSDK CreateSdk(PostHogConfig config)
+            {
+                var sdk = (PostHogSDK)RuntimeHelpers.GetUninitializedObject(typeof(PostHogSDK));
+                SetField(sdk, "_config", config);
+                return sdk;
+            }
+
+            static PostHogEvent RunBeforeSend(PostHogSDK sdk, PostHogEvent evt)
+            {
+                var method = typeof(PostHogSDK).GetMethod(
+                    "RunBeforeSend",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+                Assert.NotNull(method);
+                return (PostHogEvent)method.Invoke(sdk, new object[] { evt });
+            }
+
+            static void SetField(PostHogSDK sdk, string name, object value)
+            {
+                var field = typeof(PostHogSDK).GetField(
+                    name,
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+                Assert.NotNull(field);
+                field.SetValue(sdk, value);
+            }
+        }
+
         [Collection("UnityGlobals")]
         public class ThePublicApiMethods
         {
