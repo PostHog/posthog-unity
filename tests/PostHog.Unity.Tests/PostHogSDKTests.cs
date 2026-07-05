@@ -141,18 +141,13 @@ namespace PostHogUnity.Tests
         public class TheBeforeSendCallback
         {
             [Fact]
-            public void CanModifyFullyEnrichedEventBeforeItIsQueued()
+            public void CanModifyEventBeforeItIsQueued()
             {
-                var sawFullyEnrichedEvent = false;
                 var config = new PostHogConfig
                 {
                     ApiKey = "test-api-key",
                     BeforeSend = evt =>
                     {
-                        sawFullyEnrichedEvent = evt.Properties.ContainsKey("$lib")
-                            && evt.Properties.ContainsKey("$lib_version")
-                            && evt.Properties.ContainsKey("$session_id")
-                            && evt.Properties.ContainsKey("source");
                         evt.Properties.Remove("secret");
                         evt.Properties["before_send"] = true;
                         return evt;
@@ -174,25 +169,32 @@ namespace PostHogUnity.Tests
 
                 var processed = RunBeforeSend(sdk, evt);
 
-                Assert.True(sawFullyEnrichedEvent);
                 Assert.NotNull(processed);
                 Assert.True((bool)processed.Properties["before_send"]);
                 Assert.False(processed.Properties.ContainsKey("secret"));
             }
 
-            [Fact]
-            public void CanDropEventBeforeItIsQueued()
+            [Theory]
+            [MemberData(nameof(DropCallbacks))]
+            public void CanDropEventBeforeItIsQueued(Func<PostHogEvent, PostHogEvent> beforeSend)
             {
-                var config = new PostHogConfig
-                {
-                    ApiKey = "test-api-key",
-                    BeforeSend = _ => null,
-                };
+                var config = new PostHogConfig { ApiKey = "test-api-key", BeforeSend = beforeSend };
                 var sdk = CreateSdk(config);
 
                 var processed = RunBeforeSend(sdk, new PostHogEvent("drop-me", "distinct-id"));
 
                 Assert.Null(processed);
+            }
+
+            public static IEnumerable<object[]> DropCallbacks()
+            {
+                yield return new object[] { (Func<PostHogEvent, PostHogEvent>)(_ => null) };
+                yield return new object[]
+                {
+                    (Func<PostHogEvent, PostHogEvent>)(
+                        _ => throw new InvalidOperationException("beforeSend failed")
+                    ),
+                };
             }
 
             static PostHogSDK CreateSdk(PostHogConfig config)

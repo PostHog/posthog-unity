@@ -109,6 +109,7 @@ namespace PostHogUnity
         /// <summary>
         /// Callback invoked after an event is fully enriched and before it is queued.
         /// Return the event (mutated or unchanged) to continue, or null to drop it.
+        /// If the callback throws, the SDK logs the exception and drops the event.
         /// </summary>
         public Func<PostHogEvent, PostHogEvent> BeforeSend { get; set; }
 
