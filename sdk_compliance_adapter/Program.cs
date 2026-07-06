@@ -174,26 +174,7 @@ sealed class AdapterState : IDisposable
             ["flag_keys_to_evaluate"] = new[] { request.Key ?? "" },
         };
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_host}/flags/?v=2");
-        httpRequest.Content = JsonContent(body);
-        if (!string.IsNullOrEmpty(_testId))
-        {
-            httpRequest.Headers.TryAddWithoutValidation("X-Test-Id", _testId);
-        }
-
-        using var response = await _http.SendAsync(httpRequest);
-        var text = await response.Content.ReadAsStringAsync();
-        object? value = null;
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            using var doc = JsonDocument.Parse(text);
-            if (doc.RootElement.TryGetProperty("featureFlags", out var flags)
-                && flags.ValueKind == JsonValueKind.Object
-                && flags.TryGetProperty(request.Key ?? "", out var flagValue))
-            {
-                value = ToObject(flagValue);
-            }
-        }
+        var value = await FetchFeatureFlagWithRetriesAsync(body, request.Key ?? "");
 
         Capture(new CaptureRequest
         {
@@ -225,6 +206,64 @@ sealed class AdapterState : IDisposable
     }
 
     public void Dispose() => _http.Dispose();
+
+    async Task<object?> FetchFeatureFlagWithRetriesAsync(Dictionary<string, object?> body, string key)
+    {
+        for (var attempt = 0; attempt <= _maxRetries; attempt++)
+        {
+            if (attempt > 0)
+            {
+                lock (_lock) _totalRetries++;
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{_host}/flags/?v=2");
+            request.Content = JsonContent(body);
+            if (!string.IsNullOrEmpty(_testId))
+            {
+                request.Headers.TryAddWithoutValidation("X-Test-Id", _testId);
+            }
+
+            HttpResponseMessage? response = null;
+            var statusCode = 0;
+            try
+            {
+                response = await _http.SendAsync(request);
+                statusCode = (int)response.StatusCode;
+                if (statusCode >= 200 && statusCode < 300)
+                {
+                    var text = await response.Content.ReadAsStringAsync();
+                    response.Dispose();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        using var doc = JsonDocument.Parse(text);
+                        if (doc.RootElement.TryGetProperty("featureFlags", out var flags)
+                            && flags.ValueKind == JsonValueKind.Object
+                            && flags.TryGetProperty(key, out var flagValue))
+                        {
+                            return ToObject(flagValue);
+                        }
+                    }
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (_lock) _lastError = ex.Message;
+            }
+
+            if (!IsRetryableFeatureFlagStatus(statusCode) || attempt >= _maxRetries)
+            {
+                response?.Dispose();
+                return null;
+            }
+
+            var delay = RetryDelay(response, attempt);
+            response?.Dispose();
+            await Task.Delay(delay);
+        }
+
+        return null;
+    }
 
     async Task<bool> SendWithRetriesAsync(List<Dictionary<string, object?>> batch, string path)
     {
@@ -313,6 +352,8 @@ sealed class AdapterState : IDisposable
     }
 
     static bool IsRetryable(int statusCode) => statusCode == 0 || statusCode == 408 || statusCode == 429 || statusCode >= 500;
+
+    static bool IsRetryableFeatureFlagStatus(int statusCode) => statusCode == 0 || statusCode == 502 || statusCode == 504;
 
     static TimeSpan RetryDelay(HttpResponseMessage? response, int attempt)
     {
