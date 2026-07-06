@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- 0639b2e: Add a beforeSend callback for modifying or dropping fully enriched events.
+
 ## 1.0.5
 
 ### Patch Changes
