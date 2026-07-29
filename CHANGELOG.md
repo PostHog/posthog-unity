@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+### Patch Changes
+
+- 8e372a5: Replace placeholder ErrorTracking asset GUIDs to prevent collisions with other Unity packages.
+
 ## 1.1.0
 
 ### Minor Changes
