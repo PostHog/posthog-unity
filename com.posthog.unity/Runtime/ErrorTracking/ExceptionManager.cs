@@ -17,6 +17,7 @@ namespace PostHogUnity.ErrorTracking
         readonly PostHogConfig _config;
         readonly Action<string, Dictionary<string, object>> _captureEvent;
         readonly Func<string> _getDistinctId;
+        readonly Func<ExceptionRuntimeInfo> _getRuntimeInfo;
 
         UnityExceptionIntegration _exceptionIntegration;
         WebGLExceptionIntegration _webglIntegration;
@@ -27,12 +28,14 @@ namespace PostHogUnity.ErrorTracking
         public ExceptionManager(
             PostHogConfig config,
             Action<string, Dictionary<string, object>> captureEvent,
-            Func<string> getDistinctId
+            Func<string> getDistinctId,
+            Func<ExceptionRuntimeInfo> getRuntimeInfo = null
         )
         {
             _config = config;
             _captureEvent = captureEvent;
             _getDistinctId = getDistinctId;
+            _getRuntimeInfo = getRuntimeInfo ?? ExceptionRuntimeInfo.Capture;
         }
 
         /// <summary>
@@ -147,7 +150,7 @@ namespace PostHogUnity.ErrorTracking
                         $"{host}/project/{_config.ApiKey}/person/{distinctId}";
                 }
 
-                ExceptionPropertiesBuilder.Build(properties, exception, handled);
+                ExceptionPropertiesBuilder.Build(properties, exception, handled, _getRuntimeInfo());
 
                 _captureEvent?.Invoke("$exception", properties);
                 _lastExceptionTime = DateTime.UtcNow;

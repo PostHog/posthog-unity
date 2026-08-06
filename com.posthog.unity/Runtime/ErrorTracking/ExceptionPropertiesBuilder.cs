@@ -23,9 +23,11 @@ namespace PostHogUnity.ErrorTracking
         public static Dictionary<string, object> Build(
             Dictionary<string, object> properties,
             Exception exception,
-            bool handled = false
+            bool handled = false,
+            ExceptionRuntimeInfo? runtimeInfo = null
         )
         {
+            var resolvedRuntimeInfo = runtimeInfo ?? ExceptionRuntimeInfo.Capture();
             properties["$exception_type"] =
                 exception.GetType().FullName ?? exception.GetType().Name;
             properties["$exception_message"] = exception.Message;
@@ -34,10 +36,10 @@ namespace PostHogUnity.ErrorTracking
             properties["$exception_handled"] = handled;
             properties["$lib"] = SdkInfo.LibraryName;
             properties["$lib_version"] = SdkInfo.Version;
-            properties["$os"] = GetOperatingSystem();
-            properties["$os_version"] = SystemInfo.operatingSystem;
-            properties["$device_model"] = SystemInfo.deviceModel;
-            properties["$unity_version"] = Application.unityVersion;
+            properties["$os"] = resolvedRuntimeInfo.OperatingSystem;
+            properties["$os_version"] = resolvedRuntimeInfo.OperatingSystemVersion;
+            properties["$device_model"] = resolvedRuntimeInfo.DeviceModel;
+            properties["$unity_version"] = resolvedRuntimeInfo.UnityVersion;
 
             properties["$exception_list"] = BuildExceptionList(exception, handled);
 
@@ -225,7 +227,7 @@ namespace PostHogUnity.ErrorTracking
             return message;
         }
 
-        static string GetOperatingSystem()
+        internal static string GetOperatingSystem()
         {
 #if UNITY_IOS
             return "iOS";
@@ -242,6 +244,37 @@ namespace PostHogUnity.ErrorTracking
 #else
             return Application.platform.ToString();
 #endif
+        }
+    }
+
+    readonly struct ExceptionRuntimeInfo
+    {
+        public string OperatingSystem { get; }
+        public string OperatingSystemVersion { get; }
+        public string DeviceModel { get; }
+        public string UnityVersion { get; }
+
+        public ExceptionRuntimeInfo(
+            string operatingSystem,
+            string operatingSystemVersion,
+            string deviceModel,
+            string unityVersion
+        )
+        {
+            OperatingSystem = operatingSystem;
+            OperatingSystemVersion = operatingSystemVersion;
+            DeviceModel = deviceModel;
+            UnityVersion = unityVersion;
+        }
+
+        public static ExceptionRuntimeInfo Capture()
+        {
+            return new ExceptionRuntimeInfo(
+                ExceptionPropertiesBuilder.GetOperatingSystem(),
+                SystemInfo.operatingSystem,
+                SystemInfo.deviceModel,
+                Application.unityVersion
+            );
         }
     }
 }

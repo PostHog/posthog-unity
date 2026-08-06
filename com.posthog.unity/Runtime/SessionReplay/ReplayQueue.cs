@@ -306,35 +306,12 @@ namespace PostHogUnity.SessionReplay
 
         IEnumerator SendBatch(List<SnapshotEvent> events, Action<bool, int> onComplete)
         {
-            var url = $"{_host}/s/";
-
-            var batchList = new List<Dictionary<string, object>>();
-            foreach (var evt in events)
-            {
-                batchList.Add(evt.ToDictionary(_apiKey));
-            }
-
-            var json = JsonSerializer.Serialize(batchList);
-            var bodyBytes = Encoding.UTF8.GetBytes(json);
-
-            var (payloadBytes, useCompression) = PreparePayload(bodyBytes, CompressGzip);
+            var requestData = CreateBatchRequestData(events);
             PostHogLogger.Debug(
-                $"Sending replay batch to {url} (size: {payloadBytes.Length} bytes)"
+                $"Sending replay batch to {requestData.Url} (size: {requestData.Body.Length} bytes)"
             );
 
-            using var request = new UnityWebRequest(url, "POST");
-            request.uploadHandler = new UploadHandlerRaw(payloadBytes);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json");
-
-            if (useCompression)
-            {
-                request.SetRequestHeader("Content-Encoding", "gzip");
-            }
-
-            request.timeout = TimeoutSeconds;
-
+            using var request = NetworkClient.CreateWebRequest(requestData);
             yield return request.SendWebRequest();
 
             int statusCode = (int)request.responseCode;
@@ -351,6 +328,38 @@ namespace PostHogUnity.SessionReplay
                 );
                 onComplete?.Invoke(false, statusCode);
             }
+        }
+
+        internal HttpRequestData CreateBatchRequestData(List<SnapshotEvent> events)
+        {
+            var batchList = new List<Dictionary<string, object>>();
+            foreach (var evt in events)
+            {
+                batchList.Add(evt.ToDictionary(_apiKey));
+            }
+
+            var json = JsonSerializer.Serialize(batchList);
+            var bodyBytes = Encoding.UTF8.GetBytes(json);
+            var (payloadBytes, useCompression) = PreparePayload(bodyBytes, CompressGzip);
+            var headers = new Dictionary<string, string>
+            {
+                ["Content-Type"] = "application/json",
+                ["Accept"] = "application/json",
+            };
+
+            if (useCompression)
+            {
+                headers["Content-Encoding"] = "gzip";
+            }
+
+            return new HttpRequestData
+            {
+                Url = $"{_host}/s/",
+                Method = "POST",
+                Body = payloadBytes,
+                Headers = headers,
+                TimeoutSeconds = TimeoutSeconds,
+            };
         }
 
         internal static (byte[] PayloadBytes, bool UseCompression) PreparePayload(

@@ -34,6 +34,7 @@ namespace PostHogUnity
         ExceptionManager _exceptionManager;
         SessionReplayIntegration _sessionReplayIntegration;
         Dictionary<string, object> _superProperties;
+        Func<SdkRuntimeInfo> _getSdkRuntimeInfo;
         bool _optedOut;
 
         /// <summary>
@@ -145,6 +146,7 @@ namespace PostHogUnity
         {
             _config = config;
             _superProperties = new Dictionary<string, object>();
+            _getSdkRuntimeInfo = SdkRuntimeInfo.Capture;
 
             PostHogLogger.SetLogLevel(config.LogLevel);
 
@@ -452,20 +454,21 @@ namespace PostHogUnity
 
         void AddSdkProperties(Dictionary<string, object> properties)
         {
+            var runtimeInfo = (_getSdkRuntimeInfo ?? SdkRuntimeInfo.Capture)();
             properties["$lib"] = SdkInfo.LibraryName;
             properties["$lib_version"] = SdkInfo.Version;
 
             // Add device/platform properties
-            properties["$os"] = PlatformInfo.GetOperatingSystem();
-            properties["$os_version"] = SystemInfo.operatingSystem;
-            properties["$device_type"] = PlatformInfo.GetDeviceType();
-            properties["$device_manufacturer"] = SystemInfo.deviceModel;
-            properties["$device_model"] = SystemInfo.deviceModel;
-            properties["$screen_width"] = UnityEngine.Screen.width;
-            properties["$screen_height"] = UnityEngine.Screen.height;
-            properties["$app_version"] = Application.version;
-            properties["$app_build"] = Application.buildGUID;
-            properties["$app_name"] = Application.productName;
+            properties["$os"] = runtimeInfo.OperatingSystem;
+            properties["$os_version"] = runtimeInfo.OperatingSystemVersion;
+            properties["$device_type"] = runtimeInfo.DeviceType;
+            properties["$device_manufacturer"] = runtimeInfo.DeviceModel;
+            properties["$device_model"] = runtimeInfo.DeviceModel;
+            properties["$screen_width"] = runtimeInfo.ScreenWidth;
+            properties["$screen_height"] = runtimeInfo.ScreenHeight;
+            properties["$app_version"] = runtimeInfo.AppVersion;
+            properties["$app_build"] = runtimeInfo.AppBuild;
+            properties["$app_name"] = runtimeInfo.AppName;
 
             // Person profiles mode
             if (
@@ -1165,5 +1168,56 @@ namespace PostHogUnity
         }
 
         #endregion
+    }
+
+    readonly struct SdkRuntimeInfo
+    {
+        public string OperatingSystem { get; }
+        public string OperatingSystemVersion { get; }
+        public string DeviceType { get; }
+        public string DeviceModel { get; }
+        public int ScreenWidth { get; }
+        public int ScreenHeight { get; }
+        public string AppVersion { get; }
+        public string AppBuild { get; }
+        public string AppName { get; }
+
+        public SdkRuntimeInfo(
+            string operatingSystem,
+            string operatingSystemVersion,
+            string deviceType,
+            string deviceModel,
+            int screenWidth,
+            int screenHeight,
+            string appVersion,
+            string appBuild,
+            string appName
+        )
+        {
+            OperatingSystem = operatingSystem;
+            OperatingSystemVersion = operatingSystemVersion;
+            DeviceType = deviceType;
+            DeviceModel = deviceModel;
+            ScreenWidth = screenWidth;
+            ScreenHeight = screenHeight;
+            AppVersion = appVersion;
+            AppBuild = appBuild;
+            AppName = appName;
+        }
+
+        public static SdkRuntimeInfo Capture()
+        {
+            return new SdkRuntimeInfo(
+                PlatformInfo.GetOperatingSystem(),
+                SystemInfo.operatingSystem,
+                PlatformInfo.GetDeviceType(),
+                SystemInfo.deviceModel,
+                UnityEngine.Screen.width,
+                UnityEngine.Screen.height,
+                Application.version,
+                Application.buildGUID,
+                Application.productName
+            );
+        }
     }
 }

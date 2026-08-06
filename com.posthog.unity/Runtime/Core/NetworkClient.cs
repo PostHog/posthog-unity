@@ -65,17 +65,9 @@ namespace PostHogUnity
         /// <param name="onComplete">Callback with (success, statusCode)</param>
         public IEnumerator SendBatch(BatchPayload payload, Action<bool, int> onComplete)
         {
-            var url = GetBatchUrl();
-            var json = JsonSerializer.SerializeBatch(payload);
+            using var request = CreateBatchRequest(payload);
 
-            PostHogLogger.Debug($"Sending batch to {url}");
-
-            using var request = new UnityWebRequest(url, "POST");
-            var bodyRaw = Encoding.UTF8.GetBytes(json);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            ApplyDefaultHeaders(request);
-            request.timeout = TimeoutSeconds;
+            PostHogLogger.Debug($"Sending batch to {request.url}");
 
             yield return request.SendWebRequest();
 
@@ -160,6 +152,19 @@ namespace PostHogUnity
 
                 yield return _featureFlagsRetryDelayFactory(attempt);
             }
+        }
+
+        internal UnityWebRequest CreateBatchRequest(BatchPayload payload)
+        {
+            return CreateWebRequest(CreateBatchRequestData(payload));
+        }
+
+        internal HttpRequestData CreateBatchRequestData(BatchPayload payload)
+        {
+            return CreateJsonRequestData(
+                GetBatchUrl(),
+                Encoding.UTF8.GetBytes(JsonSerializer.SerializeBatch(payload))
+            );
         }
 
         string GetBatchUrl()
@@ -284,6 +289,29 @@ namespace PostHogUnity
             Dictionary<string, Dictionary<string, object>> groupProperties = null
         )
         {
+            return CreateWebRequest(
+                CreateFlagsRequestData(
+                    apiKey,
+                    host,
+                    distinctId,
+                    anonymousId,
+                    groups,
+                    personProperties,
+                    groupProperties
+                )
+            );
+        }
+
+        internal static HttpRequestData CreateFlagsRequestData(
+            string apiKey,
+            string host,
+            string distinctId,
+            string anonymousId = null,
+            Dictionary<string, string> groups = null,
+            IReadOnlyDictionary<string, object> personProperties = null,
+            Dictionary<string, Dictionary<string, object>> groupProperties = null
+        )
+        {
             var normalizedHost = host.TrimEnd('/');
             var url = $"{normalizedHost}/flags/?v={FeatureFlagsResponse.CurrentVersion}";
 
@@ -313,23 +341,49 @@ namespace PostHogUnity
                 body["group_properties"] = groupProperties;
             }
 
-            var json = JsonSerializer.Serialize(body);
+            return CreateJsonRequestData(
+                url,
+                Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body))
+            );
+        }
 
-            var request = new UnityWebRequest(url, "POST");
-            var bodyRaw = Encoding.UTF8.GetBytes(json);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        internal static HttpRequestData CreateJsonRequestData(string url, byte[] body)
+        {
+            return new HttpRequestData
+            {
+                Url = url,
+                Method = "POST",
+                Body = body,
+                TimeoutSeconds = TimeoutSeconds,
+                Headers = new Dictionary<string, string>
+                {
+                    ["Content-Type"] = "application/json",
+                    ["Accept"] = "application/json",
+                    ["User-Agent"] = SdkInfo.UserAgent,
+                },
+            };
+        }
+
+        internal static UnityWebRequest CreateWebRequest(HttpRequestData data)
+        {
+            var request = new UnityWebRequest(data.Url, data.Method);
+            request.uploadHandler = new UploadHandlerRaw(data.Body);
             request.downloadHandler = new DownloadHandlerBuffer();
-            ApplyDefaultHeaders(request);
-            request.timeout = TimeoutSeconds;
-
+            foreach (var header in data.Headers)
+            {
+                request.SetRequestHeader(header.Key, header.Value);
+            }
+            request.timeout = data.TimeoutSeconds;
             return request;
         }
+    }
 
-        static void ApplyDefaultHeaders(UnityWebRequest request)
-        {
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json");
-            request.SetRequestHeader("User-Agent", SdkInfo.UserAgent);
-        }
+    class HttpRequestData
+    {
+        public string Url { get; set; }
+        public string Method { get; set; }
+        public byte[] Body { get; set; }
+        public Dictionary<string, string> Headers { get; set; }
+        public int TimeoutSeconds { get; set; }
     }
 }

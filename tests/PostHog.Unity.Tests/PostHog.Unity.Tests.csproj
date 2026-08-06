@@ -28,6 +28,10 @@
         <PackageReference Include="Unity3D.SDK" Version="2021.1.14.1" />
     </ItemGroup>
 
+    <ItemGroup>
+        <Content Include="Snapshots/**/*.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
     <PropertyGroup>
         <!-- Suppress framework compatibility warning for Unity stubs -->
         <NoWarn>NU1701</NoWarn>

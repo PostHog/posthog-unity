@@ -1,0 +1,189 @@
+[
+  {
+    "distinct_id": "anonymous-id",
+    "event": "checkout completed",
+    "properties": {
+      "$app_build": "snapshot-build",
+      "$app_name": "Snapshot Game",
+      "$app_version": "1.2.3",
+      "$device_manufacturer": "Snapshot Device",
+      "$device_model": "Snapshot Device",
+      "$device_type": "Desktop",
+      "$lib": "posthog-unity",
+      "$lib_version": "<sdk-version>",
+      "$os": "SnapshotOS",
+      "$os_version": "1.0",
+      "$process_person_profile": false,
+      "$screen_height": 720,
+      "$screen_width": 1280,
+      "$session_id": "<session-id>",
+      "amount": 42.5,
+      "currency": "USD",
+      "items": [
+        "hedgehog plush",
+        "sticker"
+      ],
+      "plan": "enterprise",
+      "source": "snapshot-test"
+    },
+    "timestamp": "<timestamp>",
+    "uuid": "<uuid-v7>"
+  },
+  {
+    "distinct_id": "user-123",
+    "event": "$identify",
+    "properties": {
+      "$anon_distinct_id": "anonymous-id",
+      "$app_build": "snapshot-build",
+      "$app_name": "Snapshot Game",
+      "$app_version": "1.2.3",
+      "$device_manufacturer": "Snapshot Device",
+      "$device_model": "Snapshot Device",
+      "$device_type": "Desktop",
+      "$lib": "posthog-unity",
+      "$lib_version": "<sdk-version>",
+      "$os": "SnapshotOS",
+      "$os_version": "1.0",
+      "$screen_height": 720,
+      "$screen_width": 1280,
+      "$session_id": "<session-id>",
+      "$set": {
+        "email": "person@example.com",
+        "name": "Hedge Hog"
+      },
+      "$set_once": {
+        "created_via": "unity"
+      },
+      "plan": "starter",
+      "source": "snapshot-test"
+    },
+    "timestamp": "<timestamp>",
+    "uuid": "<uuid-v7>"
+  },
+  {
+    "distinct_id": "user-123",
+    "event": "$groupidentify",
+    "properties": {
+      "$app_build": "snapshot-build",
+      "$app_name": "Snapshot Game",
+      "$app_version": "1.2.3",
+      "$device_manufacturer": "Snapshot Device",
+      "$device_model": "Snapshot Device",
+      "$device_type": "Desktop",
+      "$group_key": "posthog",
+      "$group_set": {
+        "employees": 100,
+        "name": "PostHog"
+      },
+      "$group_type": "company",
+      "$groups": {
+        "company": "posthog"
+      },
+      "$lib": "posthog-unity",
+      "$lib_version": "<sdk-version>",
+      "$os": "SnapshotOS",
+      "$os_version": "1.0",
+      "$screen_height": 720,
+      "$screen_width": 1280,
+      "$session_id": "<session-id>",
+      "plan": "starter",
+      "source": "snapshot-test"
+    },
+    "timestamp": "<timestamp>",
+    "uuid": "<uuid-v7>"
+  },
+  {
+    "distinct_id": "user-123",
+    "event": "$feature_flag_called",
+    "properties": {
+      "$app_build": "snapshot-build",
+      "$app_name": "Snapshot Game",
+      "$app_version": "1.2.3",
+      "$device_manufacturer": "Snapshot Device",
+      "$device_model": "Snapshot Device",
+      "$device_type": "Desktop",
+      "$feature_flag": "checkout-layout",
+      "$feature_flag_evaluated_at": 1700000000,
+      "$feature_flag_id": 17,
+      "$feature_flag_reason": "Matched snapshot cohort",
+      "$feature_flag_request_id": "request-123",
+      "$feature_flag_response": "test",
+      "$feature_flag_version": 3,
+      "$groups": {
+        "company": "posthog"
+      },
+      "$lib": "posthog-unity",
+      "$lib_version": "<sdk-version>",
+      "$os": "SnapshotOS",
+      "$os_version": "1.0",
+      "$screen_height": 720,
+      "$screen_width": 1280,
+      "$session_id": "<session-id>",
+      "plan": "starter",
+      "source": "snapshot-test"
+    },
+    "timestamp": "<timestamp>",
+    "uuid": "<uuid-v7>"
+  },
+  {
+    "distinct_id": "user-123",
+    "event": "$exception",
+    "properties": {
+      "$app_build": "snapshot-build",
+      "$app_name": "Snapshot Game",
+      "$app_version": "1.2.3",
+      "$device_manufacturer": "Snapshot Device",
+      "$device_model": "Snapshot Device",
+      "$device_type": "Desktop",
+      "$exception_handled": true,
+      "$exception_level": "error",
+      "$exception_list": [
+        {
+          "mechanism": {
+            "handled": true,
+            "source": "unity",
+            "synthetic": false,
+            "type": "generic"
+          },
+          "stacktrace": {
+            "frames": [
+              {
+                "abs_path": "<abs_path>",
+                "colno": "<colno>",
+                "filename": "EventShapeSnapshotTests.cs",
+                "function": "CreateSnapshotException",
+                "lang": "csharp",
+                "lineno": "<lineno>",
+                "module": "PostHogUnity.Tests.EventShapeSnapshotTests",
+                "platform": "custom"
+              }
+            ],
+            "type": "raw"
+          },
+          "type": "System.InvalidOperationException",
+          "value": "snapshot boom"
+        }
+      ],
+      "$exception_message": "snapshot boom",
+      "$exception_personURL": "https://example.com/ingest/project/phc_snapshot_key/person/user-123",
+      "$exception_source": "unity_sdk",
+      "$exception_type": "System.InvalidOperationException",
+      "$groups": {
+        "company": "posthog"
+      },
+      "$lib": "posthog-unity",
+      "$lib_version": "<sdk-version>",
+      "$os": "SnapshotOS",
+      "$os_version": "1.0",
+      "$screen_height": 720,
+      "$screen_width": 1280,
+      "$session_id": "<session-id>",
+      "$unity_version": "2021.snapshot",
+      "plan": "starter",
+      "scene": "Checkout",
+      "source": "snapshot-test"
+    },
+    "timestamp": "<timestamp>",
+    "uuid": "<uuid-v7>"
+  }
+]

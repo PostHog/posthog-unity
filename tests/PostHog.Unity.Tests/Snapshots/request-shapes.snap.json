@@ -1,0 +1,140 @@
+{
+  "batch": {
+    "body": {
+      "api_key": "phc_snapshot_key",
+      "batch": [
+        {
+          "distinct_id": "anonymous-id",
+          "event": "wire event",
+          "properties": {
+            "$app_build": "snapshot-build",
+            "$app_name": "Snapshot Game",
+            "$app_version": "1.2.3",
+            "$device_manufacturer": "Snapshot Device",
+            "$device_model": "Snapshot Device",
+            "$device_type": "Desktop",
+            "$lib": "posthog-unity",
+            "$lib_version": "<sdk-version>",
+            "$os": "SnapshotOS",
+            "$os_version": "1.0",
+            "$process_person_profile": false,
+            "$screen_height": 720,
+            "$screen_width": 1280,
+            "$session_id": "<session-id>",
+            "nested": {
+              "ok": true
+            },
+            "plan": "starter",
+            "source": "snapshot-test"
+          },
+          "timestamp": "<timestamp>",
+          "uuid": "<uuid-v7>"
+        }
+      ],
+      "sent_at": "<sent-at>"
+    },
+    "headers": {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "posthog-unity/<sdk-version>"
+    },
+    "host": "example.com",
+    "method": "POST",
+    "path": "/ingest/batch",
+    "query": "",
+    "scheme": "https",
+    "timeout_seconds": 10
+  },
+  "feature_flags": {
+    "body": {
+      "$anon_distinct_id": "anonymous-id",
+      "$groups": {
+        "company": "posthog"
+      },
+      "api_key": "phc_snapshot_key",
+      "distinct_id": "user-123",
+      "group_properties": {
+        "company": {
+          "employees": 100,
+          "industry": "software"
+        }
+      },
+      "person_properties": {
+        "$app_version": "1.2.3",
+        "email": "person@example.com"
+      }
+    },
+    "headers": {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "posthog-unity/<sdk-version>"
+    },
+    "host": "example.com",
+    "method": "POST",
+    "path": "/ingest/flags/",
+    "query": "?v=2",
+    "scheme": "https",
+    "timeout_seconds": 10
+  },
+  "session_replay": {
+    "body": [
+      {
+        "api_key": "phc_snapshot_key",
+        "distinct_id": "user-123",
+        "event": "$snapshot",
+        "properties": {
+          "$lib": "posthog-unity",
+          "$lib_version": "<sdk-version>",
+          "$session_id": "session-123",
+          "$snapshot_data": [
+            {
+              "data": {
+                "height": 720,
+                "href": "Checkout",
+                "width": 1280
+              },
+              "timestamp": 1700000000000,
+              "type": 4
+            },
+            {
+              "data": {
+                "initialOffset": {
+                  "left": 0,
+                  "top": 0
+                },
+                "wireframes": [
+                  {
+                    "base64": "data:image/jpeg;base64,c25hcHNob3Q=",
+                    "height": 360,
+                    "id": 1,
+                    "type": "screenshot",
+                    "width": 640,
+                    "x": 0,
+                    "y": 0
+                  }
+                ]
+              },
+              "timestamp": 1700000000100,
+              "type": 2
+            }
+          ],
+          "$snapshot_source": "mobile",
+          "$window_id": "session-123"
+        },
+        "timestamp": "<timestamp>",
+        "uuid": "<uuid-v7>"
+      }
+    ],
+    "headers": {
+      "Accept": "application/json",
+      "Content-Encoding": "gzip",
+      "Content-Type": "application/json"
+    },
+    "host": "example.com",
+    "method": "POST",
+    "path": "/ingest/s/",
+    "query": "",
+    "scheme": "https",
+    "timeout_seconds": 30
+  }
+}
