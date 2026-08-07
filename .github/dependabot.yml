@@ -1,5 +1,25 @@
 version: 2
 updates:
+  - package-ecosystem: "nuget"
+    cooldown:
+      default-days: 7
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      nuget-dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: "npm"
+    cooldown:
+      default-days: 7
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      release-tooling:
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     cooldown:
       default-days: 7
