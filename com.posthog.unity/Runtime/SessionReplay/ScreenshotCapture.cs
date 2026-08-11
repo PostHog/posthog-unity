@@ -11,6 +11,11 @@ namespace PostHogUnity.SessionReplay
     class ScreenshotCapture
     {
         readonly PostHogSessionReplayConfig _config;
+
+        // The render texture origin depends on the graphics API: bottom-left on OpenGL ES,
+        // top-left on Metal, Vulkan, and Direct3D. Flip only when frames arrive bottom-up.
+        readonly bool _flipVertically;
+
         float _lastCaptureTime;
         bool _isCapturing;
 
@@ -26,6 +31,7 @@ namespace PostHogUnity.SessionReplay
         {
             _config = config;
             _lastCaptureTime = 0;
+            _flipVertically = !SystemInfo.graphicsUVStartsAtTop;
         }
 
         /// <summary>
@@ -71,7 +77,16 @@ namespace PostHogUnity.SessionReplay
 
                 EnsureRenderTextures(screenWidth, screenHeight, scaledWidth, scaledHeight);
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
-                Graphics.Blit(_fullRT, _scaledRT);
+
+                if (_flipVertically)
+                {
+                    // Flip on the GPU during the downscale blit to keep images top-left.
+                    Graphics.Blit(_fullRT, _scaledRT, new Vector2(1, -1), new Vector2(0, 1));
+                }
+                else
+                {
+                    Graphics.Blit(_fullRT, _scaledRT);
+                }
 
                 AsyncGPUReadback.Request(
                     _scaledRT,
@@ -183,9 +198,6 @@ namespace PostHogUnity.SessionReplay
                 texture.LoadRawTextureData(data);
                 texture.Apply();
 
-                // Unity's RenderTexture origin is bottom-left, but images expect top-left
-                FlipTextureVertically(texture);
-
                 byte[] jpegBytes = texture.EncodeToJPG(quality);
                 UnityEngine.Object.Destroy(texture);
 
@@ -209,29 +221,6 @@ namespace PostHogUnity.SessionReplay
                 PostHogLogger.Error("Failed to process screenshot readback", ex);
                 onComplete?.Invoke(null);
             }
-        }
-
-        void FlipTextureVertically(Texture2D texture)
-        {
-            var pixels = texture.GetPixels();
-            int width = texture.width;
-            int height = texture.height;
-
-            for (int y = 0; y < height / 2; y++)
-            {
-                int topRowStart = y * width;
-                int bottomRowStart = (height - 1 - y) * width;
-
-                for (int x = 0; x < width; x++)
-                {
-                    var temp = pixels[topRowStart + x];
-                    pixels[topRowStart + x] = pixels[bottomRowStart + x];
-                    pixels[bottomRowStart + x] = temp;
-                }
-            }
-
-            texture.SetPixels(pixels);
-            texture.Apply();
         }
 
         /// <summary>
