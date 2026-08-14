@@ -23,16 +23,14 @@ namespace PostHogUnity.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic
             );
             Assert.NotNull(queueField);
-            var events = Assert.IsAssignableFrom<System.Collections.IList>(
-                queueField.GetValue(queue)
-            );
-            var envelope = Assert.Single(events.Cast<object>());
-            var timestampProperty = envelope.GetType().GetProperty("Timestamp");
-            Assert.NotNull(timestampProperty);
-            var timestamp = Assert.IsType<string>(timestampProperty.GetValue(envelope));
+            var events = Assert.IsType<List<SnapshotEvent>>(queueField.GetValue(queue));
+            var envelope = Assert.Single(events);
 
-            Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", timestamp);
-            Assert.Equal(123L, RREvent.CreateMeta(100, 200, "Home", 123L).Timestamp);
+            Assert.Matches(
+                @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$",
+                envelope.Timestamp
+            );
+            Assert.Equal(123L, Assert.Single(envelope.SnapshotData).Timestamp);
         }
 
         [Fact]
