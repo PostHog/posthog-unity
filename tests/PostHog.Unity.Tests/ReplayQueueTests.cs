@@ -26,10 +26,7 @@ namespace PostHogUnity.Tests
             var events = Assert.IsType<List<SnapshotEvent>>(queueField.GetValue(queue));
             var envelope = Assert.Single(events);
 
-            Assert.Matches(
-                @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$",
-                envelope.Timestamp
-            );
+            Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", envelope.Timestamp);
             Assert.Equal(123L, Assert.Single(envelope.SnapshotData).Timestamp);
         }
 
