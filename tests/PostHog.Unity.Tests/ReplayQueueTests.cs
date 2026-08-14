@@ -1,9 +1,40 @@
+using System.Reflection;
 using PostHogUnity.SessionReplay;
 
 namespace PostHogUnity.Tests
 {
     public class ReplayQueueTests
     {
+        [Fact]
+        public void EnqueueCreatesReplayEnvelopeWithUtcTimestamp()
+        {
+            var queue = new ReplayQueue(
+                new PostHogSessionReplayConfig(),
+                "test-api-key",
+                "https://example.com",
+                () => "distinct-id",
+                () => "session-id"
+            );
+
+            queue.Enqueue(new List<RREvent> { RREvent.CreateMeta(100, 200, "Home", 123L) });
+
+            var queueField = typeof(ReplayQueue).GetField(
+                "_queue",
+                BindingFlags.Instance | BindingFlags.NonPublic
+            );
+            Assert.NotNull(queueField);
+            var events = Assert.IsAssignableFrom<System.Collections.IList>(
+                queueField.GetValue(queue)
+            );
+            var envelope = Assert.Single(events.Cast<object>());
+            var timestampProperty = envelope.GetType().GetProperty("Timestamp");
+            Assert.NotNull(timestampProperty);
+            var timestamp = Assert.IsType<string>(timestampProperty.GetValue(envelope));
+
+            Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", timestamp);
+            Assert.Equal(123L, RREvent.CreateMeta(100, 200, "Home", 123L).Timestamp);
+        }
+
         [Fact]
         public void PreparePayloadCompressesSmallPayloads()
         {

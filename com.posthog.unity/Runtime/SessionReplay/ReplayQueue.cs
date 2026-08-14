@@ -89,7 +89,7 @@ namespace PostHogUnity.SessionReplay
             var evt = new SnapshotEvent
             {
                 Uuid = UuidV7.Generate(),
-                Timestamp = DateTime.UtcNow.ToString("o"),
+                Timestamp = UtcTimestamp.Now(),
                 DistinctId = _getDistinctId(),
                 SessionId = sessionId,
                 SnapshotData = snapshotData,
