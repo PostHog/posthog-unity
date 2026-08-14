@@ -24,9 +24,16 @@ namespace PostHogUnity.Tests
                 var after = DateTime.UtcNow;
 
                 Assert.NotNull(evt.Timestamp);
-                Assert.True(DateTime.TryParse(evt.Timestamp, out var timestamp));
-                // Parse returns local time, convert to UTC for comparison
-                timestamp = timestamp.ToUniversalTime();
+                Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", evt.Timestamp);
+                Assert.True(
+                    DateTime.TryParse(
+                        evt.Timestamp,
+                        null,
+                        System.Globalization.DateTimeStyles.RoundtripKind,
+                        out var timestamp
+                    )
+                );
+                Assert.Equal(DateTimeKind.Utc, timestamp.Kind);
                 Assert.True(
                     timestamp >= before.AddSeconds(-1),
                     $"Timestamp {timestamp} should be >= {before.AddSeconds(-1)}"
@@ -80,7 +87,7 @@ namespace PostHogUnity.Tests
                 var evt = new PostHogEvent("test_event", "user123");
 
                 Assert.NotNull(evt.Timestamp);
-                Assert.True(DateTime.TryParse(evt.Timestamp, out _));
+                Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", evt.Timestamp);
             }
 
             [Fact]

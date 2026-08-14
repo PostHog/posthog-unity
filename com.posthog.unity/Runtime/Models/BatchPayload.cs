@@ -20,7 +20,7 @@ namespace PostHogUnity
         public List<PostHogEvent> Batch { get; set; }
 
         /// <summary>
-        /// ISO 8601 timestamp when the batch was sent.
+        /// ISO 8601 timestamp when the batch was sent. SDK-generated values are UTC.
         /// </summary>
         public string SentAt { get; set; }
 
@@ -30,7 +30,7 @@ namespace PostHogUnity
         public BatchPayload()
         {
             Batch = new List<PostHogEvent>();
-            SentAt = DateTime.UtcNow.ToString("o");
+            SentAt = UtcTimestamp.Now();
         }
 
         /// <summary>

@@ -146,6 +146,27 @@ namespace PostHogUnity.Tests
             }
         }
 
+        public class TheUtcTimestampFormatter
+        {
+            [Fact]
+            public void WithNonUtcOffset_ConvertsEquivalentInstantToExactUtcWireValue()
+            {
+                var timestamp = new DateTimeOffset(
+                    2025,
+                    1,
+                    15,
+                    10,
+                    30,
+                    45,
+                    TimeSpan.FromHours(5.5)
+                );
+
+                var result = UtcTimestamp.Format(timestamp);
+
+                Assert.Equal("2025-01-15T05:00:45.0000000Z", result);
+            }
+        }
+
         public class TheSerializeEventMethod
         {
             [Fact]
@@ -162,7 +183,8 @@ namespace PostHogUnity.Tests
                 Assert.Contains("\"event\":\"test_event\"", result);
                 Assert.Contains("\"distinct_id\":\"user123\"", result);
                 Assert.Contains("\"uuid\":", result);
-                Assert.Contains("\"timestamp\":", result);
+                Assert.Contains($"\"timestamp\":\"{evt.Timestamp}\"", result);
+                Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", evt.Timestamp);
                 Assert.Contains("\"properties\":{}", result);
             }
 
@@ -193,7 +215,8 @@ namespace PostHogUnity.Tests
                 var result = JsonSerializer.SerializeBatch(payload);
 
                 Assert.Contains("\"api_key\":\"test_api_key\"", result);
-                Assert.Contains("\"sent_at\":", result);
+                Assert.Contains($"\"sent_at\":\"{payload.SentAt}\"", result);
+                Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", payload.SentAt);
                 Assert.Contains("\"batch\":[]", result);
             }
 

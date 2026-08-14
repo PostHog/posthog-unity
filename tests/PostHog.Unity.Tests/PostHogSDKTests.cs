@@ -174,6 +174,29 @@ namespace PostHogUnity.Tests
                 Assert.False(processed.Properties.ContainsKey("secret"));
             }
 
+            [Fact]
+            public void PreservesCallerControlledTimestampMutation()
+            {
+                const string callerTimestamp = "not-an-sdk-timestamp";
+                var config = new PostHogConfig
+                {
+                    ApiKey = "test-api-key",
+                    BeforeSend = evt =>
+                    {
+                        evt.Timestamp = callerTimestamp;
+                        return evt;
+                    },
+                };
+                var sdk = CreateSdk(config);
+
+                var processed = RunBeforeSend(
+                    sdk,
+                    new PostHogEvent("before-send-event", "distinct-id")
+                );
+
+                Assert.Equal(callerTimestamp, processed.Timestamp);
+            }
+
             [Theory]
             [MemberData(nameof(DropCallbacks))]
             public void CanDropEventBeforeItIsQueued(Func<PostHogEvent, PostHogEvent> beforeSend)

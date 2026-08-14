@@ -25,7 +25,7 @@ namespace PostHogUnity
         public string DistinctId { get; set; }
 
         /// <summary>
-        /// ISO 8601 timestamp when the event occurred.
+        /// ISO 8601 timestamp when the event occurred. SDK-generated values are UTC.
         /// </summary>
         public string Timestamp { get; set; }
 
@@ -40,7 +40,7 @@ namespace PostHogUnity
         public PostHogEvent()
         {
             Uuid = UuidV7.Generate();
-            Timestamp = DateTime.UtcNow.ToString("o");
+            Timestamp = UtcTimestamp.Now();
             Properties = new Dictionary<string, object>();
         }
 
