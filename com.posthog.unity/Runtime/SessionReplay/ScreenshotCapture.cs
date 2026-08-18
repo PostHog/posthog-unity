@@ -11,10 +11,8 @@ namespace PostHogUnity.SessionReplay
     class ScreenshotCapture
     {
         readonly PostHogSessionReplayConfig _config;
-
-        // The render texture origin depends on the graphics API: bottom-left on OpenGL ES,
-        // top-left on Metal, Vulkan, and Direct3D. Flip only when frames arrive bottom-up.
-        readonly bool _flipVertically;
+        readonly Vector2 _blitScale;
+        readonly Vector2 _blitOffset;
 
         float _lastCaptureTime;
         bool _isCapturing;
@@ -31,7 +29,10 @@ namespace PostHogUnity.SessionReplay
         {
             _config = config;
             _lastCaptureTime = 0;
-            _flipVertically = !SystemInfo.graphicsUVStartsAtTop;
+
+            bool graphicsUVStartsAtTop = SystemInfo.graphicsUVStartsAtTop;
+            _blitScale = new Vector2(1, ScreenshotOrientation.BlitScaleY(graphicsUVStartsAtTop));
+            _blitOffset = new Vector2(0, ScreenshotOrientation.BlitOffsetY(graphicsUVStartsAtTop));
         }
 
         /// <summary>
@@ -78,15 +79,9 @@ namespace PostHogUnity.SessionReplay
                 EnsureRenderTextures(screenWidth, screenHeight, scaledWidth, scaledHeight);
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
 
-                if (_flipVertically)
-                {
-                    // Flip on the GPU during the downscale blit to keep images top-left.
-                    Graphics.Blit(_fullRT, _scaledRT, new Vector2(1, -1), new Vector2(0, 1));
-                }
-                else
-                {
-                    Graphics.Blit(_fullRT, _scaledRT);
-                }
+                // CaptureScreenshotIntoRenderTexture produces an inverted readback on graphics
+                // APIs whose texture UV coordinates start at the top. Correct it during the blit.
+                Graphics.Blit(_fullRT, _scaledRT, _blitScale, _blitOffset);
 
                 AsyncGPUReadback.Request(
                     _scaledRT,
@@ -257,6 +252,24 @@ namespace PostHogUnity.SessionReplay
                 UnityEngine.Object.Destroy(_scaledRT);
                 _scaledRT = null;
             }
+        }
+    }
+
+    static class ScreenshotOrientation
+    {
+        internal static bool ShouldFlipVertically(bool graphicsUVStartsAtTop)
+        {
+            return graphicsUVStartsAtTop;
+        }
+
+        internal static float BlitScaleY(bool graphicsUVStartsAtTop)
+        {
+            return ShouldFlipVertically(graphicsUVStartsAtTop) ? -1f : 1f;
+        }
+
+        internal static float BlitOffsetY(bool graphicsUVStartsAtTop)
+        {
+            return ShouldFlipVertically(graphicsUVStartsAtTop) ? 1f : 0f;
         }
     }
 
