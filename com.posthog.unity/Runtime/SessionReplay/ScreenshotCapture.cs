@@ -11,6 +11,9 @@ namespace PostHogUnity.SessionReplay
     class ScreenshotCapture
     {
         readonly PostHogSessionReplayConfig _config;
+        readonly Vector2 _blitScale;
+        readonly Vector2 _blitOffset;
+
         float _lastCaptureTime;
         bool _isCapturing;
 
@@ -26,6 +29,10 @@ namespace PostHogUnity.SessionReplay
         {
             _config = config;
             _lastCaptureTime = 0;
+
+            bool graphicsUVStartsAtTop = SystemInfo.graphicsUVStartsAtTop;
+            _blitScale = new Vector2(1, ScreenshotOrientation.BlitScaleY(graphicsUVStartsAtTop));
+            _blitOffset = new Vector2(0, ScreenshotOrientation.BlitOffsetY(graphicsUVStartsAtTop));
         }
 
         /// <summary>
@@ -71,7 +78,10 @@ namespace PostHogUnity.SessionReplay
 
                 EnsureRenderTextures(screenWidth, screenHeight, scaledWidth, scaledHeight);
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
-                Graphics.Blit(_fullRT, _scaledRT);
+
+                // CaptureScreenshotIntoRenderTexture produces an inverted readback on graphics
+                // APIs whose texture UV coordinates start at the top. Correct it during the blit.
+                Graphics.Blit(_fullRT, _scaledRT, _blitScale, _blitOffset);
 
                 AsyncGPUReadback.Request(
                     _scaledRT,
@@ -183,9 +193,6 @@ namespace PostHogUnity.SessionReplay
                 texture.LoadRawTextureData(data);
                 texture.Apply();
 
-                // Unity's RenderTexture origin is bottom-left, but images expect top-left
-                FlipTextureVertically(texture);
-
                 byte[] jpegBytes = texture.EncodeToJPG(quality);
                 UnityEngine.Object.Destroy(texture);
 
@@ -209,29 +216,6 @@ namespace PostHogUnity.SessionReplay
                 PostHogLogger.Error("Failed to process screenshot readback", ex);
                 onComplete?.Invoke(null);
             }
-        }
-
-        void FlipTextureVertically(Texture2D texture)
-        {
-            var pixels = texture.GetPixels();
-            int width = texture.width;
-            int height = texture.height;
-
-            for (int y = 0; y < height / 2; y++)
-            {
-                int topRowStart = y * width;
-                int bottomRowStart = (height - 1 - y) * width;
-
-                for (int x = 0; x < width; x++)
-                {
-                    var temp = pixels[topRowStart + x];
-                    pixels[topRowStart + x] = pixels[bottomRowStart + x];
-                    pixels[bottomRowStart + x] = temp;
-                }
-            }
-
-            texture.SetPixels(pixels);
-            texture.Apply();
         }
 
         /// <summary>
@@ -268,6 +252,24 @@ namespace PostHogUnity.SessionReplay
                 UnityEngine.Object.Destroy(_scaledRT);
                 _scaledRT = null;
             }
+        }
+    }
+
+    static class ScreenshotOrientation
+    {
+        internal static bool ShouldFlipVertically(bool graphicsUVStartsAtTop)
+        {
+            return graphicsUVStartsAtTop;
+        }
+
+        internal static float BlitScaleY(bool graphicsUVStartsAtTop)
+        {
+            return ShouldFlipVertically(graphicsUVStartsAtTop) ? -1f : 1f;
+        }
+
+        internal static float BlitOffsetY(bool graphicsUVStartsAtTop)
+        {
+            return ShouldFlipVertically(graphicsUVStartsAtTop) ? 1f : 0f;
         }
     }
 
