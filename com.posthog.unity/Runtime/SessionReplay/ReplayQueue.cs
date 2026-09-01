@@ -20,6 +20,9 @@ namespace PostHogUnity.SessionReplay
         readonly string _host;
         readonly Func<string> _getDistinctId;
         readonly Func<string> _getSessionId;
+        readonly Func<List<SnapshotEvent>, Action<BatchUploadResult>, IEnumerator> _sendBatch;
+        readonly Func<DateTime> _utcNow;
+        readonly Func<bool> _isConnected;
         readonly object _lock = new();
 
         readonly List<SnapshotEvent> _queue = new();
@@ -29,10 +32,9 @@ namespace PostHogUnity.SessionReplay
         MonoBehaviour _coroutineRunner;
         DateTime? _pausedUntil;
         int _retryCount;
+        int _adjustedMaxBatchSize = MaxBatchSize;
 
         const int TimeoutSeconds = 30;
-        const int RetryDelaySeconds = 5;
-        const int MaxRetryDelaySeconds = 30;
         const int MaxBatchSize = 10; // Snapshots are large, so smaller batches
 
         public ReplayQueue(
@@ -48,6 +50,31 @@ namespace PostHogUnity.SessionReplay
             _host = host.TrimEnd('/');
             _getDistinctId = getDistinctId;
             _getSessionId = getSessionId;
+            _sendBatch = SendBatch;
+            _utcNow = () => DateTime.UtcNow;
+            _isConnected = () =>
+                Application.internetReachability != NetworkReachability.NotReachable;
+        }
+
+        internal ReplayQueue(
+            PostHogSessionReplayConfig config,
+            string apiKey,
+            string host,
+            Func<string> getDistinctId,
+            Func<string> getSessionId,
+            Func<List<SnapshotEvent>, Action<BatchUploadResult>, IEnumerator> sendBatch,
+            Func<DateTime> utcNow,
+            Func<bool> isConnected
+        )
+        {
+            _config = config;
+            _apiKey = apiKey;
+            _host = host.TrimEnd('/');
+            _getDistinctId = getDistinctId;
+            _getSessionId = getSessionId;
+            _sendBatch = sendBatch;
+            _utcNow = utcNow;
+            _isConnected = isConnected;
         }
 
         /// <summary>
@@ -199,7 +226,7 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        IEnumerator FlushCoroutine()
+        internal IEnumerator FlushCoroutine()
         {
             lock (_lock)
             {
@@ -211,16 +238,17 @@ namespace PostHogUnity.SessionReplay
                 _isFlushing = true;
             }
 
-            if (_pausedUntil.HasValue && DateTime.UtcNow < _pausedUntil.Value)
+            // Known-offline periods do not consume a request or retry state.
+            if (!_isConnected())
             {
-                PostHogLogger.Debug($"Replay queue paused until {_pausedUntil.Value}");
+                PostHogLogger.Debug("No network connectivity, skipping replay flush");
                 _isFlushing = false;
                 yield break;
             }
 
-            if (Application.internetReachability == NetworkReachability.NotReachable)
+            if (_pausedUntil.HasValue && _utcNow() < _pausedUntil.Value)
             {
-                PostHogLogger.Debug("No network connectivity, skipping replay flush");
+                PostHogLogger.Debug($"Replay queue paused until {_pausedUntil.Value}");
                 _isFlushing = false;
                 yield break;
             }
@@ -235,7 +263,7 @@ namespace PostHogUnity.SessionReplay
                         if (_queue.Count == 0)
                             break;
 
-                        int batchSize = Math.Min(_queue.Count, MaxBatchSize);
+                        int batchSize = Math.Min(_queue.Count, _adjustedMaxBatchSize);
                         batch = new List<SnapshotEvent>(_queue.GetRange(0, batchSize));
                     }
 
@@ -244,58 +272,46 @@ namespace PostHogUnity.SessionReplay
 
                     PostHogLogger.Debug($"Flushing batch of {batch.Count} replay events");
 
-                    bool success = false;
-                    int statusCode = 0;
+                    var uploadResult = new BatchUploadResult(false, 0);
+                    yield return _sendBatch(batch, result => uploadResult = result);
 
-                    yield return SendBatch(
-                        batch,
-                        (result, code) =>
-                        {
-                            success = result;
-                            statusCode = code;
-                        }
-                    );
-
-                    if (success)
+                    if (uploadResult.Success)
                     {
-                        lock (_lock)
-                        {
-                            for (int i = 0; i < batch.Count && _queue.Count > 0; i++)
-                            {
-                                _queue.RemoveAt(0);
-                            }
-                        }
-
-                        _retryCount = 0;
-                        _pausedUntil = null;
+                        RemoveBatch(batch);
+                        ResetRetryState();
                         PostHogLogger.Debug($"Successfully sent {batch.Count} replay events");
+                        continue;
                     }
-                    else
+
+                    if (uploadResult.StatusCode == 413)
                     {
-                        bool shouldDelete = ShouldDeleteEventsOnError(statusCode);
-                        if (shouldDelete)
+                        if (batch.Count == 1)
                         {
-                            lock (_lock)
-                            {
-                                for (int i = 0; i < batch.Count && _queue.Count > 0; i++)
-                                {
-                                    _queue.RemoveAt(0);
-                                }
-                            }
+                            RemoveBatch(batch);
+                            ResetRetryState();
+                            PostHogLogger.Warning(
+                                "Dropped oversized replay event after a singleton batch received HTTP 413"
+                            );
                         }
                         else
                         {
-                            // Pause for retry
-                            _retryCount++;
-                            int delay = Math.Min(
-                                _retryCount * RetryDelaySeconds,
-                                MaxRetryDelaySeconds
+                            _adjustedMaxBatchSize = RetryQueuePolicy.ReducedBatchSize(batch.Count);
+                            PostHogLogger.Warning(
+                                $"Replay payload too large, reducing batch size to {_adjustedMaxBatchSize}"
                             );
-                            _pausedUntil = DateTime.UtcNow.AddSeconds(delay);
-                            PostHogLogger.Warning($"Replay flush failed, retrying in {delay}s");
+                            PauseForRetry(uploadResult.RetryAfter);
                         }
-                        break;
                     }
+                    else if (RetryQueuePolicy.ShouldDelete(uploadResult.StatusCode))
+                    {
+                        RemoveBatch(batch);
+                        ResetRetryState();
+                    }
+                    else
+                    {
+                        PauseForRetry(uploadResult.RetryAfter);
+                    }
+                    break;
                 }
             }
             finally
@@ -304,7 +320,35 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        IEnumerator SendBatch(List<SnapshotEvent> events, Action<bool, int> onComplete)
+        void RemoveBatch(List<SnapshotEvent> batch)
+        {
+            lock (_lock)
+            {
+                foreach (var sentEvent in batch)
+                {
+                    _queue.Remove(sentEvent);
+                }
+            }
+        }
+
+        void PauseForRetry(TimeSpan? retryAfter)
+        {
+            if (_retryCount < int.MaxValue)
+            {
+                _retryCount++;
+            }
+            var delay = RetryQueuePolicy.GetRetryDelay(_retryCount, retryAfter);
+            _pausedUntil = RetryQueuePolicy.AddDelay(_utcNow(), delay);
+            PostHogLogger.Warning($"Replay flush failed, retrying in {delay.TotalSeconds:0.###}s");
+        }
+
+        void ResetRetryState()
+        {
+            _retryCount = 0;
+            _pausedUntil = null;
+        }
+
+        IEnumerator SendBatch(List<SnapshotEvent> events, Action<BatchUploadResult> onComplete)
         {
             var url = $"{_host}/s/";
 
@@ -338,18 +382,22 @@ namespace PostHogUnity.SessionReplay
             yield return request.SendWebRequest();
 
             int statusCode = (int)request.responseCode;
+            var retryAfter = NetworkClient.ParseRetryAfter(
+                request.GetResponseHeader("Retry-After"),
+                DateTimeOffset.UtcNow
+            );
 
             if (request.result == UnityWebRequest.Result.Success)
             {
                 PostHogLogger.Debug($"Replay batch sent successfully (status: {statusCode})");
-                onComplete?.Invoke(true, statusCode);
+                onComplete?.Invoke(new BatchUploadResult(true, statusCode, retryAfter));
             }
             else
             {
                 PostHogLogger.Warning(
                     $"Replay batch send failed: {request.error} (status: {statusCode})"
                 );
-                onComplete?.Invoke(false, statusCode);
+                onComplete?.Invoke(new BatchUploadResult(false, statusCode, retryAfter));
             }
         }
 
@@ -379,27 +427,6 @@ namespace PostHogUnity.SessionReplay
                 gzip.Write(data, 0, data.Length);
             }
             return output.ToArray();
-        }
-
-        bool ShouldDeleteEventsOnError(int statusCode)
-        {
-            // Retry on network errors (0) and redirects (3xx)
-            if (statusCode == 0 || (statusCode >= 300 && statusCode < 400))
-                return false;
-
-            // Don't retry on client errors (4xx) except 413
-            if (statusCode >= 400 && statusCode < 500 && statusCode != 413)
-                return true;
-
-            // Retry on 413 (handled by reducing batch size)
-            if (statusCode == 413)
-                return false;
-
-            // Retry on server errors (5xx)
-            if (statusCode >= 500)
-                return false;
-
-            return false;
         }
     }
 

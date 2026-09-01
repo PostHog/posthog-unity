@@ -12,7 +12,9 @@ namespace PostHogUnity
     {
         readonly PostHogConfig _config;
         readonly IStorageProvider _storage;
-        readonly NetworkClient _networkClient;
+        readonly Func<BatchPayload, Action<BatchUploadResult>, IEnumerator> _sendBatch;
+        readonly Func<DateTime> _utcNow;
+        readonly Func<bool> _isConnected;
         readonly object _lock = new();
 
         bool _isRunning;
@@ -27,23 +29,45 @@ namespace PostHogUnity
         int _adjustedMaxBatchSize;
         int _adjustedFlushAt;
 
-        const int RetryDelaySeconds = 5;
-        const int MaxRetryDelaySeconds = 30;
-
         public EventQueue(
             PostHogConfig config,
             IStorageProvider storage,
             NetworkClient networkClient
         )
+            : this(
+                config,
+                storage,
+                networkClient.SendBatch,
+                () => DateTime.UtcNow,
+                () => Application.internetReachability != NetworkReachability.NotReachable
+            ) { }
+
+        internal EventQueue(
+            PostHogConfig config,
+            IStorageProvider storage,
+            Func<BatchPayload, Action<BatchUploadResult>, IEnumerator> sendBatch,
+            Func<DateTime> utcNow,
+            Func<bool> isConnected
+        )
         {
             _config = config;
             _storage = storage;
-            _networkClient = networkClient;
+            _sendBatch = sendBatch;
+            _utcNow = utcNow;
+            _isConnected = isConnected;
 
             // Initialize adjusted values from config
             _adjustedMaxBatchSize = config.MaxBatchSize;
             _adjustedFlushAt = config.FlushAt;
+
+            lock (_lock)
+            {
+                var dropped = TrimQueueToSize(QueueCapacity);
+                LogCapacityDrops(dropped);
+            }
         }
+
+        int QueueCapacity => Math.Max(1, _config.MaxQueueSize);
 
         /// <summary>
         /// Starts the automatic flush timer.
@@ -73,21 +97,13 @@ namespace PostHogUnity
         {
             lock (_lock)
             {
-                // Check queue size limit
-                var eventIds = _storage.GetEventIds();
-                if (eventIds.Count >= _config.MaxQueueSize)
-                {
-                    // Drop oldest event - MaxQueueSize is validated to be >= 1,
-                    // so eventIds.Count > 0 is guaranteed here
-                    _storage.DeleteEvent(eventIds[0]);
-                    PostHogLogger.Warning(
-                        $"Queue full ({_config.MaxQueueSize}), dropped oldest event"
-                    );
-                }
+                var dropped = TrimQueueToSize(QueueCapacity - 1);
+                LogCapacityDrops(dropped);
 
-                // Save event
+                // Queue identity is deliberately independent from the mutable payload UUID.
+                var entryId = GenerateUniqueEntryId();
                 var json = JsonSerializer.SerializeEvent(evt);
-                _storage.SaveEvent(evt.Uuid, json);
+                _storage.SaveEvent(entryId, json);
                 PostHogLogger.Debug($"Enqueued event: {evt.Event}");
             }
 
@@ -134,6 +150,56 @@ namespace PostHogUnity
                 lock (_lock)
                 {
                     return _storage.GetEventCount();
+                }
+            }
+        }
+
+        int TrimQueueToSize(int targetSize)
+        {
+            var dropped = 0;
+            while (_storage.GetEventCount() > targetSize)
+            {
+                var eventIds = _storage.GetEventIds();
+                if (eventIds.Count == 0)
+                {
+                    break;
+                }
+
+                _storage.DeleteEvent(eventIds[0]);
+                dropped++;
+            }
+            return dropped;
+        }
+
+        void LogCapacityDrops(int dropped)
+        {
+            if (dropped > 0)
+            {
+                PostHogLogger.Warning(
+                    $"Queue full ({QueueCapacity}), dropped {dropped} oldest event(s)"
+                );
+            }
+        }
+
+        string GenerateUniqueEntryId()
+        {
+            while (true)
+            {
+                var entryId = UuidV7.Generate();
+                var eventIds = _storage.GetEventIds();
+                var exists = false;
+                for (int i = 0; i < eventIds.Count; i++)
+                {
+                    if (eventIds[i] == entryId)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists)
+                {
+                    return entryId;
                 }
             }
         }
@@ -195,18 +261,18 @@ namespace PostHogUnity
                 _isFlushing = true;
             }
 
-            // Check if paused due to errors
-            if (_pausedUntil.HasValue && DateTime.UtcNow < _pausedUntil.Value)
+            // Known-offline periods do not consume a request or retry state.
+            if (!_isConnected())
             {
-                PostHogLogger.Debug($"Queue paused until {_pausedUntil.Value}");
+                PostHogLogger.Debug("No network connectivity, skipping flush");
                 _isFlushing = false;
                 yield break;
             }
 
-            // Check network connectivity
-            if (Application.internetReachability == NetworkReachability.NotReachable)
+            // Check if paused due to errors
+            if (_pausedUntil.HasValue && _utcNow() < _pausedUntil.Value)
             {
-                PostHogLogger.Debug("No network connectivity, skipping flush");
+                PostHogLogger.Debug($"Queue paused until {_pausedUntil.Value}");
                 _isFlushing = false;
                 yield break;
             }
@@ -224,68 +290,72 @@ namespace PostHogUnity
 
                     // Create batch list without LINQ allocation
                     int batchSize = Math.Min(eventIds.Count, _adjustedMaxBatchSize);
-                    var batchIds = new List<string>(batchSize);
+                    var candidateIds = new List<string>(batchSize);
                     for (int i = 0; i < batchSize; i++)
                     {
-                        batchIds.Add(eventIds[i]);
+                        candidateIds.Add(eventIds[i]);
                     }
-                    var events = LoadEvents(batchIds);
+                    var entries = LoadEvents(candidateIds);
 
-                    if (events.Count == 0)
+                    if (entries.Count == 0)
                     {
-                        break;
+                        // Missing or corrupt entries were removed; continue with the next records.
+                        continue;
+                    }
+
+                    var events = new List<PostHogEvent>(entries.Count);
+                    foreach (var entry in entries)
+                    {
+                        events.Add(entry.Event);
                     }
 
                     PostHogLogger.Debug($"Flushing batch of {events.Count} events");
 
                     var payload = new BatchPayload(_config.ApiKey, events);
-                    bool success = false;
-                    bool shouldDeleteEvents = true;
+                    var uploadResult = new BatchUploadResult(false, 0);
 
-                    yield return _networkClient.SendBatch(
-                        payload,
-                        (result, statusCode) =>
-                        {
-                            success = result;
-                            shouldDeleteEvents = ShouldDeleteEventsOnError(statusCode);
-                        }
-                    );
+                    yield return _sendBatch(payload, result => uploadResult = result);
 
-                    if (success)
+                    if (uploadResult.Success)
                     {
-                        // Delete successfully sent events
-                        foreach (var id in batchIds)
-                        {
-                            _storage.DeleteEvent(id);
-                        }
-
-                        _retryCount = 0;
-                        _pausedUntil = null;
+                        DeleteEntries(entries);
+                        ResetRetryState();
                         PostHogLogger.Debug($"Successfully sent {events.Count} events");
+                        continue;
                     }
-                    else
+
+                    if (uploadResult.StatusCode == 413)
                     {
-                        if (shouldDeleteEvents)
+                        if (entries.Count == 1)
                         {
-                            // Delete events on non-retryable errors
-                            foreach (var id in batchIds)
-                            {
-                                _storage.DeleteEvent(id);
-                            }
+                            DeleteEntries(entries);
+                            ResetRetryState();
+                            PostHogLogger.Warning(
+                                "Dropped oversized event after a singleton batch received HTTP 413"
+                            );
                         }
                         else
                         {
-                            // Pause for retry
-                            _retryCount++;
-                            int delay = Math.Min(
-                                _retryCount * RetryDelaySeconds,
-                                MaxRetryDelaySeconds
+                            _adjustedMaxBatchSize = RetryQueuePolicy.ReducedBatchSize(
+                                entries.Count
                             );
-                            _pausedUntil = DateTime.UtcNow.AddSeconds(delay);
-                            PostHogLogger.Warning($"Flush failed, retrying in {delay}s");
+                            _adjustedFlushAt = Math.Min(_adjustedFlushAt, _adjustedMaxBatchSize);
+                            PostHogLogger.Warning(
+                                $"Payload too large, reducing batch size to {_adjustedMaxBatchSize}"
+                            );
+                            PauseForRetry(uploadResult.RetryAfter, "Flush failed");
                         }
-                        break;
                     }
+                    else if (RetryQueuePolicy.ShouldDelete(uploadResult.StatusCode))
+                    {
+                        DeleteEntries(entries);
+                        ResetRetryState();
+                    }
+                    else
+                    {
+                        PauseForRetry(uploadResult.RetryAfter, "Flush failed");
+                    }
+                    break;
                 }
             }
             finally
@@ -294,27 +364,55 @@ namespace PostHogUnity
             }
         }
 
-        List<PostHogEvent> LoadEvents(List<string> eventIds)
+        void PauseForRetry(TimeSpan? retryAfter, string message)
         {
-            var events = new List<PostHogEvent>();
+            if (_retryCount < int.MaxValue)
+            {
+                _retryCount++;
+            }
+            var delay = RetryQueuePolicy.GetRetryDelay(_retryCount, retryAfter);
+            _pausedUntil = RetryQueuePolicy.AddDelay(_utcNow(), delay);
+            PostHogLogger.Warning($"{message}, retrying in {delay.TotalSeconds:0.###}s");
+        }
+
+        void ResetRetryState()
+        {
+            _retryCount = 0;
+            _pausedUntil = null;
+        }
+
+        void DeleteEntries(List<QueuedEvent> entries)
+        {
+            foreach (var entry in entries)
+            {
+                _storage.DeleteEvent(entry.StorageId);
+            }
+        }
+
+        List<QueuedEvent> LoadEvents(List<string> eventIds)
+        {
+            var events = new List<QueuedEvent>();
 
             foreach (var id in eventIds)
             {
                 try
                 {
                     var json = _storage.LoadEvent(id);
-                    if (!string.IsNullOrEmpty(json))
+                    if (string.IsNullOrEmpty(json))
                     {
-                        var evt = DeserializeEvent(json);
-                        if (evt != null)
-                        {
-                            events.Add(evt);
-                        }
-                        else
-                        {
-                            // Corrupted event, delete it
-                            _storage.DeleteEvent(id);
-                        }
+                        _storage.DeleteEvent(id);
+                        continue;
+                    }
+
+                    var evt = DeserializeEvent(json);
+                    if (evt != null)
+                    {
+                        events.Add(new QueuedEvent(id, evt));
+                    }
+                    else
+                    {
+                        // Corrupted event, delete it
+                        _storage.DeleteEvent(id);
                     }
                 }
                 catch (Exception ex)
@@ -363,40 +461,59 @@ namespace PostHogUnity
             }
         }
 
-        bool ShouldDeleteEventsOnError(int statusCode)
+        sealed class QueuedEvent
         {
-            // Retry on network errors (0) and redirects (3xx)
-            if (statusCode == 0 || (statusCode >= 300 && statusCode < 400))
+            public QueuedEvent(string storageId, PostHogEvent evt)
+            {
+                StorageId = storageId;
+                Event = evt;
+            }
+
+            public string StorageId { get; }
+            public PostHogEvent Event { get; }
+        }
+    }
+
+    static class RetryQueuePolicy
+    {
+        const int RetryDelaySeconds = 5;
+        const int MaxRetryDelaySeconds = 30;
+
+        public static bool ShouldDelete(int statusCode)
+        {
+            if (
+                statusCode == 0
+                || statusCode == 408
+                || statusCode == 413
+                || statusCode == 429
+                || (statusCode >= 300 && statusCode < 400)
+                || statusCode >= 500
+            )
             {
                 return false;
             }
 
-            // Don't retry on client errors (4xx) except 413 (payload too large)
-            if (statusCode >= 400 && statusCode < 500 && statusCode != 413)
-            {
-                return true;
-            }
+            return statusCode >= 400 && statusCode < 500;
+        }
 
-            // Retry on 413 (handled separately by reducing batch size)
-            if (statusCode == 413)
-            {
-                // Reduce batch size for next attempt (use local adjusted values, not config)
-                _adjustedMaxBatchSize = Math.Max(1, _adjustedMaxBatchSize / 2);
-                _adjustedFlushAt = Math.Max(1, _adjustedFlushAt / 2);
-                PostHogLogger.Warning(
-                    $"Payload too large, reducing batch size to {_adjustedMaxBatchSize}"
-                );
-                return false;
-            }
+        public static int ReducedBatchSize(int failedBatchSize)
+        {
+            return Math.Max(1, failedBatchSize / 2);
+        }
 
-            // Retry on server errors (5xx)
-            if (statusCode >= 500)
-            {
-                return false;
-            }
+        public static TimeSpan GetRetryDelay(int retryCount, TimeSpan? retryAfter)
+        {
+            var localSeconds = Math.Min((long)retryCount * RetryDelaySeconds, MaxRetryDelaySeconds);
+            var localDelay = TimeSpan.FromSeconds(localSeconds);
+            return retryAfter.HasValue && retryAfter.Value > localDelay
+                ? retryAfter.Value
+                : localDelay;
+        }
 
-            // Default: don't delete (retry)
-            return false;
+        public static DateTime AddDelay(DateTime now, TimeSpan delay)
+        {
+            var remaining = DateTime.MaxValue - now;
+            return delay >= remaining ? DateTime.MaxValue : now.Add(delay);
         }
     }
 }

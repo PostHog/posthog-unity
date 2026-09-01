@@ -382,5 +382,153 @@ namespace PostHogUnity.Tests
                 public void Dispose() { }
             }
         }
+
+        [Collection("UnityGlobals")]
+        public class TheBatchRetryAfterHandling
+        {
+            static readonly DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+            [Fact]
+            public void ParsesDeltaSeconds()
+            {
+                Assert.Equal(TimeSpan.FromSeconds(60), NetworkClient.ParseRetryAfter("60", Now));
+            }
+
+            [Fact]
+            public void ParsesHttpDate()
+            {
+                Assert.Equal(
+                    TimeSpan.FromSeconds(60),
+                    NetworkClient.ParseRetryAfter("Thu, 01 Jan 2026 00:01:00 GMT", Now)
+                );
+            }
+
+            [Theory]
+            [InlineData(null)]
+            [InlineData("")]
+            [InlineData("not-a-delay")]
+            [InlineData("-1")]
+            public void IgnoresMissingOrInvalidValues(string value)
+            {
+                Assert.Null(NetworkClient.ParseRetryAfter(value, Now));
+            }
+
+            [Fact]
+            public void PropagatesDeltaSecondsFromProtocolErrorResponse()
+            {
+                var (result, request) = SendProtocolError("60");
+
+                Assert.False(result.Success);
+                Assert.Equal(503, result.StatusCode);
+                Assert.Equal(TimeSpan.FromSeconds(60), result.RetryAfter);
+                Assert.True(request.WasSent);
+                Assert.Equal("Retry-After", request.RequestedHeader);
+            }
+
+            [Fact]
+            public void PropagatesHttpDateFromProtocolErrorResponse()
+            {
+                var retryAt = DateTimeOffset.UtcNow.AddMinutes(2);
+
+                var (result, _) = SendProtocolError(retryAt.ToString("R"));
+
+                Assert.NotNull(result.RetryAfter);
+                Assert.InRange(result.RetryAfter.Value.TotalSeconds, 118, 120);
+            }
+
+            [Theory]
+            [InlineData(null)]
+            [InlineData("")]
+            [InlineData("not-a-delay")]
+            public void DoesNotPropagateMissingOrInvalidHeader(string header)
+            {
+                var (result, _) = SendProtocolError(header);
+
+                Assert.Null(result.RetryAfter);
+            }
+
+            static (BatchUploadResult Result, FakeBatchRequest Request) SendProtocolError(
+                string retryAfter
+            )
+            {
+                var request = new FakeBatchRequest(
+                    UnityWebRequest.Result.ProtocolError,
+                    503,
+                    "Service Unavailable",
+                    retryAfter
+                );
+                var client = new NetworkClient(
+                    new PostHogConfig { ApiKey = "test-api-key", Host = "https://example.com" },
+                    (_, _, _, _, _, _, _) => throw new InvalidOperationException(),
+                    _ => EmptyCoroutine(),
+                    (_, _) => request
+                );
+                BatchUploadResult result = null;
+
+                RunCoroutine(
+                    client.SendBatch(
+                        new BatchPayload("test-api-key", new List<PostHogEvent>()),
+                        response => result = response
+                    )
+                );
+
+                Assert.NotNull(result);
+                return (result, request);
+            }
+
+            static void RunCoroutine(IEnumerator coroutine)
+            {
+                while (coroutine.MoveNext())
+                {
+                    if (coroutine.Current is IEnumerator nestedCoroutine)
+                    {
+                        RunCoroutine(nestedCoroutine);
+                    }
+                }
+            }
+
+            static IEnumerator EmptyCoroutine()
+            {
+                yield break;
+            }
+
+            sealed class FakeBatchRequest : NetworkClient.IBatchRequest
+            {
+                readonly string _retryAfter;
+
+                public FakeBatchRequest(
+                    UnityWebRequest.Result result,
+                    long responseCode,
+                    string error,
+                    string retryAfter
+                )
+                {
+                    Result = result;
+                    ResponseCode = responseCode;
+                    Error = error;
+                    _retryAfter = retryAfter;
+                }
+
+                public UnityWebRequest.Result Result { get; }
+                public long ResponseCode { get; }
+                public string Error { get; }
+                public bool WasSent { get; private set; }
+                public string RequestedHeader { get; private set; }
+
+                public object Send()
+                {
+                    WasSent = true;
+                    return EmptyCoroutine();
+                }
+
+                public string GetResponseHeader(string name)
+                {
+                    RequestedHeader = name;
+                    return _retryAfter;
+                }
+
+                public void Dispose() { }
+            }
+        }
     }
 }

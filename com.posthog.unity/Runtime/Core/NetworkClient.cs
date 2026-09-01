@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -15,6 +16,7 @@ namespace PostHogUnity
         readonly PostHogConfig _config;
         readonly FeatureFlagsRequestFactory _featureFlagsRequestFactory;
         readonly FeatureFlagsRetryDelayFactory _featureFlagsRetryDelayFactory;
+        readonly BatchRequestFactory _batchRequestFactory;
         const int TimeoutSeconds = 10;
         const float FeatureFlagsInitialRetryDelaySeconds = 0.3f;
 
@@ -30,6 +32,17 @@ namespace PostHogUnity
 
         internal delegate object FeatureFlagsRetryDelayFactory(int failedAttempt);
 
+        internal delegate IBatchRequest BatchRequestFactory(string url, byte[] body);
+
+        internal interface IBatchRequest : IDisposable
+        {
+            UnityWebRequest.Result Result { get; }
+            long ResponseCode { get; }
+            string Error { get; }
+            object Send();
+            string GetResponseHeader(string name);
+        }
+
         internal interface IFeatureFlagsRequest : IDisposable
         {
             string Url { get; }
@@ -44,7 +57,10 @@ namespace PostHogUnity
             : this(
                 config,
                 CreateFeatureFlagsRequest,
-                failedAttempt => new WaitForSeconds(GetFeatureFlagsRetryDelaySeconds(failedAttempt))
+                failedAttempt => new WaitForSeconds(
+                    GetFeatureFlagsRetryDelaySeconds(failedAttempt)
+                ),
+                CreateBatchRequest
             ) { }
 
         internal NetworkClient(
@@ -52,44 +68,56 @@ namespace PostHogUnity
             FeatureFlagsRequestFactory featureFlagsRequestFactory,
             FeatureFlagsRetryDelayFactory featureFlagsRetryDelayFactory
         )
+            : this(
+                config,
+                featureFlagsRequestFactory,
+                featureFlagsRetryDelayFactory,
+                CreateBatchRequest
+            ) { }
+
+        internal NetworkClient(
+            PostHogConfig config,
+            FeatureFlagsRequestFactory featureFlagsRequestFactory,
+            FeatureFlagsRetryDelayFactory featureFlagsRetryDelayFactory,
+            BatchRequestFactory batchRequestFactory
+        )
         {
             _config = config;
             _featureFlagsRequestFactory = featureFlagsRequestFactory;
             _featureFlagsRetryDelayFactory = featureFlagsRetryDelayFactory;
+            _batchRequestFactory = batchRequestFactory;
         }
 
         /// <summary>
         /// Sends a batch of events to the PostHog API.
         /// </summary>
         /// <param name="payload">The batch payload to send</param>
-        /// <param name="onComplete">Callback with (success, statusCode)</param>
-        public IEnumerator SendBatch(BatchPayload payload, Action<bool, int> onComplete)
+        /// <param name="onComplete">Callback with the upload result and retry metadata.</param>
+        public IEnumerator SendBatch(BatchPayload payload, Action<BatchUploadResult> onComplete)
         {
             var url = GetBatchUrl();
             var json = JsonSerializer.SerializeBatch(payload);
 
             PostHogLogger.Debug($"Sending batch to {url}");
 
-            using var request = new UnityWebRequest(url, "POST");
-            var bodyRaw = Encoding.UTF8.GetBytes(json);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            ApplyDefaultHeaders(request);
-            request.timeout = TimeoutSeconds;
+            using var request = _batchRequestFactory(url, Encoding.UTF8.GetBytes(json));
+            yield return request.Send();
 
-            yield return request.SendWebRequest();
+            int statusCode = (int)request.ResponseCode;
+            var retryAfter = ParseRetryAfter(
+                request.GetResponseHeader("Retry-After"),
+                DateTimeOffset.UtcNow
+            );
 
-            int statusCode = (int)request.responseCode;
-
-            if (request.result == UnityWebRequest.Result.Success)
+            if (request.Result == UnityWebRequest.Result.Success)
             {
                 PostHogLogger.Debug($"Batch sent successfully (status: {statusCode})");
-                onComplete?.Invoke(true, statusCode);
+                onComplete?.Invoke(new BatchUploadResult(true, statusCode, retryAfter));
             }
             else
             {
-                PostHogLogger.Warning($"Batch send failed: {request.error} (status: {statusCode})");
-                onComplete?.Invoke(false, statusCode);
+                PostHogLogger.Warning($"Batch send failed: {request.Error} (status: {statusCode})");
+                onComplete?.Invoke(new BatchUploadResult(false, statusCode, retryAfter));
             }
         }
 
@@ -168,6 +196,44 @@ namespace PostHogUnity
             return $"{host}/batch";
         }
 
+        internal static TimeSpan? ParseRetryAfter(string value, DateTimeOffset now)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            if (
+                long.TryParse(
+                    value.Trim(),
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out var seconds
+                )
+                && seconds >= 0
+            )
+            {
+                var maxSeconds = (long)TimeSpan.MaxValue.TotalSeconds;
+                return TimeSpan.FromSeconds(Math.Min(seconds, maxSeconds));
+            }
+
+            if (
+                DateTimeOffset.TryParse(
+                    value,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces
+                        | DateTimeStyles.AssumeUniversal
+                        | DateTimeStyles.AdjustToUniversal,
+                    out var retryAt
+                )
+            )
+            {
+                return retryAt <= now ? TimeSpan.Zero : retryAt - now;
+            }
+
+            return null;
+        }
+
         internal static bool ShouldRetryFeatureFlagsRequest(
             UnityWebRequest.Result result,
             int statusCode,
@@ -208,6 +274,45 @@ namespace PostHogUnity
         internal static float GetFeatureFlagsRetryDelaySeconds(int failedAttempt)
         {
             return FeatureFlagsInitialRetryDelaySeconds * (1 << (failedAttempt - 1));
+        }
+
+        static IBatchRequest CreateBatchRequest(string url, byte[] body)
+        {
+            var request = new UnityWebRequest(url, "POST");
+            request.uploadHandler = new UploadHandlerRaw(body);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            ApplyDefaultHeaders(request);
+            request.timeout = TimeoutSeconds;
+            return new UnityWebRequestBatchRequest(request);
+        }
+
+        sealed class UnityWebRequestBatchRequest : IBatchRequest
+        {
+            readonly UnityWebRequest _request;
+
+            public UnityWebRequestBatchRequest(UnityWebRequest request)
+            {
+                _request = request;
+            }
+
+            public UnityWebRequest.Result Result => _request.result;
+            public long ResponseCode => _request.responseCode;
+            public string Error => _request.error;
+
+            public object Send()
+            {
+                return _request.SendWebRequest();
+            }
+
+            public string GetResponseHeader(string name)
+            {
+                return _request.GetResponseHeader(name);
+            }
+
+            public void Dispose()
+            {
+                _request.Dispose();
+            }
         }
 
         static IFeatureFlagsRequest CreateFeatureFlagsRequest(
@@ -331,5 +436,19 @@ namespace PostHogUnity
             request.SetRequestHeader("Accept", "application/json");
             request.SetRequestHeader("User-Agent", SdkInfo.UserAgent);
         }
+    }
+
+    class BatchUploadResult
+    {
+        public BatchUploadResult(bool success, int statusCode, TimeSpan? retryAfter = null)
+        {
+            Success = success;
+            StatusCode = statusCode;
+            RetryAfter = retryAfter;
+        }
+
+        public bool Success { get; }
+        public int StatusCode { get; }
+        public TimeSpan? RetryAfter { get; }
     }
 }
