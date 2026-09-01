@@ -68,34 +68,12 @@ namespace PostHogUnity.Tests
             var harness = new ReplayHarness();
             harness.Enqueue("retained");
             var uuid = Assert.Single(GetQueuedEvents(harness.Queue)).Uuid;
-            harness.Results.Enqueue(new BatchUploadResult(false, statusCode));
+            harness.Results.Enqueue((false, statusCode));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
             Assert.Equal(uuid, Assert.Single(GetQueuedEvents(harness.Queue)).Uuid);
             Assert.Single(harness.Attempts);
-        }
-
-        [Fact]
-        public void RetryAfterLongerThanLocalBackoffDelaysReplayRetry()
-        {
-            var harness = new ReplayHarness();
-            harness.Enqueue("retry-after");
-            harness.Results.Enqueue(new BatchUploadResult(false, 503, TimeSpan.FromSeconds(60)));
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
-
-            RunCoroutine(harness.Queue.FlushCoroutine());
-            harness.Now = harness.Now.AddSeconds(30);
-            RunCoroutine(harness.Queue.FlushCoroutine());
-
-            Assert.Single(harness.Attempts);
-            Assert.Equal(1, harness.Queue.Count);
-
-            harness.Now = harness.Now.AddSeconds(30);
-            RunCoroutine(harness.Queue.FlushCoroutine());
-
-            Assert.Equal(2, harness.Attempts.Count);
-            Assert.Equal(0, harness.Queue.Count);
         }
 
         [Fact]
@@ -115,8 +93,8 @@ namespace PostHogUnity.Tests
                 harness.Enqueue("y");
                 harness.Enqueue("z");
             };
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
-            harness.Results.Enqueue(new BatchUploadResult(false, 503));
+            harness.Results.Enqueue((true, 200));
+            harness.Results.Enqueue((false, 503));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
@@ -136,9 +114,9 @@ namespace PostHogUnity.Tests
             {
                 harness.Enqueue($"event-{i}");
             }
-            harness.Results.Enqueue(new BatchUploadResult(false, 413));
-            harness.Results.Enqueue(new BatchUploadResult(false, 413));
-            harness.Results.Enqueue(new BatchUploadResult(false, 413));
+            harness.Results.Enqueue((false, 413));
+            harness.Results.Enqueue((false, 413));
+            harness.Results.Enqueue((false, 413));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
             harness.Now = harness.Now.AddSeconds(5);
@@ -203,7 +181,7 @@ namespace PostHogUnity.Tests
             }
 
             public ReplayQueue Queue { get; }
-            public Queue<BatchUploadResult> Results { get; } = new();
+            public Queue<(bool Success, int StatusCode)> Results { get; } = new();
             public List<List<SnapshotEvent>> Attempts { get; } = new();
             public DateTime Now { get; set; } = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             public bool Connected { get; set; } = true;
@@ -214,11 +192,12 @@ namespace PostHogUnity.Tests
                 Queue.Enqueue(new List<RREvent> { RREvent.CreateMeta(100, 200, screenName, 123L) });
             }
 
-            IEnumerator SendBatch(List<SnapshotEvent> batch, Action<BatchUploadResult> onComplete)
+            IEnumerator SendBatch(List<SnapshotEvent> batch, Action<bool, int> onComplete)
             {
                 Attempts.Add(new List<SnapshotEvent>(batch));
                 OnSend?.Invoke(batch);
-                onComplete(Results.Dequeue());
+                var result = Results.Dequeue();
+                onComplete(result.Success, result.StatusCode);
                 yield break;
             }
         }

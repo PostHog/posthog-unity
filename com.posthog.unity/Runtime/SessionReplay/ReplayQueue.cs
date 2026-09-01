@@ -20,7 +20,7 @@ namespace PostHogUnity.SessionReplay
         readonly string _host;
         readonly Func<string> _getDistinctId;
         readonly Func<string> _getSessionId;
-        readonly Func<List<SnapshotEvent>, Action<BatchUploadResult>, IEnumerator> _sendBatch;
+        readonly Func<List<SnapshotEvent>, Action<bool, int>, IEnumerator> _sendBatch;
         readonly Func<DateTime> _utcNow;
         readonly Func<bool> _isConnected;
         readonly object _lock = new();
@@ -62,7 +62,7 @@ namespace PostHogUnity.SessionReplay
             string host,
             Func<string> getDistinctId,
             Func<string> getSessionId,
-            Func<List<SnapshotEvent>, Action<BatchUploadResult>, IEnumerator> sendBatch,
+            Func<List<SnapshotEvent>, Action<bool, int>, IEnumerator> sendBatch,
             Func<DateTime> utcNow,
             Func<bool> isConnected
         )
@@ -272,10 +272,18 @@ namespace PostHogUnity.SessionReplay
 
                     PostHogLogger.Debug($"Flushing batch of {batch.Count} replay events");
 
-                    var uploadResult = new BatchUploadResult(false, 0);
-                    yield return _sendBatch(batch, result => uploadResult = result);
+                    var success = false;
+                    var statusCode = 0;
+                    yield return _sendBatch(
+                        batch,
+                        (result, code) =>
+                        {
+                            success = result;
+                            statusCode = code;
+                        }
+                    );
 
-                    if (uploadResult.Success)
+                    if (success)
                     {
                         RemoveBatch(batch);
                         ResetRetryState();
@@ -283,7 +291,7 @@ namespace PostHogUnity.SessionReplay
                         continue;
                     }
 
-                    if (uploadResult.StatusCode == 413)
+                    if (statusCode == 413)
                     {
                         if (batch.Count == 1)
                         {
@@ -299,17 +307,17 @@ namespace PostHogUnity.SessionReplay
                             PostHogLogger.Warning(
                                 $"Replay payload too large, reducing batch size to {_adjustedMaxBatchSize}"
                             );
-                            PauseForRetry(uploadResult.RetryAfter);
+                            PauseForRetry();
                         }
                     }
-                    else if (RetryQueuePolicy.ShouldDelete(uploadResult.StatusCode))
+                    else if (RetryQueuePolicy.ShouldDelete(statusCode))
                     {
                         RemoveBatch(batch);
                         ResetRetryState();
                     }
                     else
                     {
-                        PauseForRetry(uploadResult.RetryAfter);
+                        PauseForRetry();
                     }
                     break;
                 }
@@ -331,13 +339,13 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        void PauseForRetry(TimeSpan? retryAfter)
+        void PauseForRetry()
         {
             if (_retryCount < int.MaxValue)
             {
                 _retryCount++;
             }
-            var delay = RetryQueuePolicy.GetRetryDelay(_retryCount, retryAfter);
+            var delay = RetryQueuePolicy.GetRetryDelay(_retryCount);
             _pausedUntil = RetryQueuePolicy.AddDelay(_utcNow(), delay);
             PostHogLogger.Warning($"Replay flush failed, retrying in {delay.TotalSeconds:0.###}s");
         }
@@ -348,7 +356,7 @@ namespace PostHogUnity.SessionReplay
             _pausedUntil = null;
         }
 
-        IEnumerator SendBatch(List<SnapshotEvent> events, Action<BatchUploadResult> onComplete)
+        IEnumerator SendBatch(List<SnapshotEvent> events, Action<bool, int> onComplete)
         {
             var url = $"{_host}/s/";
 
@@ -382,22 +390,18 @@ namespace PostHogUnity.SessionReplay
             yield return request.SendWebRequest();
 
             int statusCode = (int)request.responseCode;
-            var retryAfter = NetworkClient.ParseRetryAfter(
-                request.GetResponseHeader("Retry-After"),
-                DateTimeOffset.UtcNow
-            );
 
             if (request.result == UnityWebRequest.Result.Success)
             {
                 PostHogLogger.Debug($"Replay batch sent successfully (status: {statusCode})");
-                onComplete?.Invoke(new BatchUploadResult(true, statusCode, retryAfter));
+                onComplete?.Invoke(true, statusCode);
             }
             else
             {
                 PostHogLogger.Warning(
                     $"Replay batch send failed: {request.error} (status: {statusCode})"
                 );
-                onComplete?.Invoke(new BatchUploadResult(false, statusCode, retryAfter));
+                onComplete?.Invoke(false, statusCode);
             }
         }
 

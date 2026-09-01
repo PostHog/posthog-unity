@@ -12,7 +12,7 @@ namespace PostHogUnity
     {
         readonly PostHogConfig _config;
         readonly IStorageProvider _storage;
-        readonly Func<BatchPayload, Action<BatchUploadResult>, IEnumerator> _sendBatch;
+        readonly Func<BatchPayload, Action<bool, int>, IEnumerator> _sendBatch;
         readonly Func<DateTime> _utcNow;
         readonly Func<bool> _isConnected;
         readonly object _lock = new();
@@ -45,7 +45,7 @@ namespace PostHogUnity
         internal EventQueue(
             PostHogConfig config,
             IStorageProvider storage,
-            Func<BatchPayload, Action<BatchUploadResult>, IEnumerator> sendBatch,
+            Func<BatchPayload, Action<bool, int>, IEnumerator> sendBatch,
             Func<DateTime> utcNow,
             Func<bool> isConnected
         )
@@ -312,11 +312,19 @@ namespace PostHogUnity
                     PostHogLogger.Debug($"Flushing batch of {events.Count} events");
 
                     var payload = new BatchPayload(_config.ApiKey, events);
-                    var uploadResult = new BatchUploadResult(false, 0);
+                    var success = false;
+                    var statusCode = 0;
 
-                    yield return _sendBatch(payload, result => uploadResult = result);
+                    yield return _sendBatch(
+                        payload,
+                        (result, code) =>
+                        {
+                            success = result;
+                            statusCode = code;
+                        }
+                    );
 
-                    if (uploadResult.Success)
+                    if (success)
                     {
                         DeleteEntries(entries);
                         ResetRetryState();
@@ -324,7 +332,7 @@ namespace PostHogUnity
                         continue;
                     }
 
-                    if (uploadResult.StatusCode == 413)
+                    if (statusCode == 413)
                     {
                         if (entries.Count == 1)
                         {
@@ -343,17 +351,17 @@ namespace PostHogUnity
                             PostHogLogger.Warning(
                                 $"Payload too large, reducing batch size to {_adjustedMaxBatchSize}"
                             );
-                            PauseForRetry(uploadResult.RetryAfter, "Flush failed");
+                            PauseForRetry("Flush failed");
                         }
                     }
-                    else if (RetryQueuePolicy.ShouldDelete(uploadResult.StatusCode))
+                    else if (RetryQueuePolicy.ShouldDelete(statusCode))
                     {
                         DeleteEntries(entries);
                         ResetRetryState();
                     }
                     else
                     {
-                        PauseForRetry(uploadResult.RetryAfter, "Flush failed");
+                        PauseForRetry("Flush failed");
                     }
                     break;
                 }
@@ -364,13 +372,13 @@ namespace PostHogUnity
             }
         }
 
-        void PauseForRetry(TimeSpan? retryAfter, string message)
+        void PauseForRetry(string message)
         {
             if (_retryCount < int.MaxValue)
             {
                 _retryCount++;
             }
-            var delay = RetryQueuePolicy.GetRetryDelay(_retryCount, retryAfter);
+            var delay = RetryQueuePolicy.GetRetryDelay(_retryCount);
             _pausedUntil = RetryQueuePolicy.AddDelay(_utcNow(), delay);
             PostHogLogger.Warning($"{message}, retrying in {delay.TotalSeconds:0.###}s");
         }
@@ -501,13 +509,10 @@ namespace PostHogUnity
             return Math.Max(1, failedBatchSize / 2);
         }
 
-        public static TimeSpan GetRetryDelay(int retryCount, TimeSpan? retryAfter)
+        public static TimeSpan GetRetryDelay(int retryCount)
         {
-            var localSeconds = Math.Min((long)retryCount * RetryDelaySeconds, MaxRetryDelaySeconds);
-            var localDelay = TimeSpan.FromSeconds(localSeconds);
-            return retryAfter.HasValue && retryAfter.Value > localDelay
-                ? retryAfter.Value
-                : localDelay;
+            var seconds = Math.Min((long)retryCount * RetryDelaySeconds, MaxRetryDelaySeconds);
+            return TimeSpan.FromSeconds(seconds);
         }
 
         public static DateTime AddDelay(DateTime now, TimeSpan delay)

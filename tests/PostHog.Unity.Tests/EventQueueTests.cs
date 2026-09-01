@@ -69,7 +69,7 @@ namespace PostHogUnity.Tests
                 EventJson("legacy-payload-uuid", "legacy-event")
             );
             var harness = CreateHarness(storage);
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
+            harness.Results.Enqueue((true, 200));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
@@ -84,7 +84,7 @@ namespace PostHogUnity.Tests
             storage.SaveEvent("corrupt-storage-id", "not-json");
             storage.SaveEvent("valid-storage-id", EventJson("valid-payload-uuid", "valid-event"));
             var harness = CreateHarness(storage);
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
+            harness.Results.Enqueue((true, 200));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
@@ -109,7 +109,7 @@ namespace PostHogUnity.Tests
             var harness = CreateHarness();
             harness.Queue.Enqueue(Event("retained"));
             var id = Assert.Single(harness.Storage.GetEventIds());
-            harness.Results.Enqueue(new BatchUploadResult(false, statusCode));
+            harness.Results.Enqueue((false, statusCode));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
@@ -122,32 +122,10 @@ namespace PostHogUnity.Tests
         {
             var harness = CreateHarness();
             harness.Queue.Enqueue(Event("terminal"));
-            harness.Results.Enqueue(new BatchUploadResult(false, 400));
+            harness.Results.Enqueue((false, 400));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
-            Assert.Empty(harness.Storage.GetEventIds());
-        }
-
-        [Fact]
-        public void RetryAfterLongerThanLocalBackoffDelaysNextAttempt()
-        {
-            var harness = CreateHarness();
-            harness.Queue.Enqueue(Event("retry-after"));
-            harness.Results.Enqueue(new BatchUploadResult(false, 503, TimeSpan.FromSeconds(60)));
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
-
-            RunCoroutine(harness.Queue.FlushCoroutine());
-            harness.Now = harness.Now.AddSeconds(30);
-            RunCoroutine(harness.Queue.FlushCoroutine());
-
-            Assert.Single(harness.Attempts);
-            Assert.Single(harness.Storage.GetEventIds());
-
-            harness.Now = harness.Now.AddSeconds(30);
-            RunCoroutine(harness.Queue.FlushCoroutine());
-
-            Assert.Equal(2, harness.Attempts.Count);
             Assert.Empty(harness.Storage.GetEventIds());
         }
 
@@ -160,9 +138,9 @@ namespace PostHogUnity.Tests
                 harness.Queue.Enqueue(Event($"event-{i}"));
             }
             var originalIds = new List<string>(harness.Storage.GetEventIds());
-            harness.Results.Enqueue(new BatchUploadResult(false, 413));
-            harness.Results.Enqueue(new BatchUploadResult(false, 413));
-            harness.Results.Enqueue(new BatchUploadResult(false, 413));
+            harness.Results.Enqueue((false, 413));
+            harness.Results.Enqueue((false, 413));
+            harness.Results.Enqueue((false, 413));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
             harness.Now = harness.Now.AddSeconds(5);
@@ -193,8 +171,8 @@ namespace PostHogUnity.Tests
                 harness.Queue.Enqueue(Event("y"));
                 harness.Queue.Enqueue(Event("z"));
             };
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
-            harness.Results.Enqueue(new BatchUploadResult(false, 503));
+            harness.Results.Enqueue((true, 200));
+            harness.Results.Enqueue((false, 503));
 
             RunCoroutine(harness.Queue.FlushCoroutine());
 
@@ -214,7 +192,7 @@ namespace PostHogUnity.Tests
             Assert.Empty(harness.Attempts);
 
             harness.Connected = true;
-            harness.Results.Enqueue(new BatchUploadResult(true, 200));
+            harness.Results.Enqueue((true, 200));
             RunCoroutine(harness.Queue.FlushCoroutine());
 
             Assert.Single(harness.Attempts);
@@ -272,17 +250,18 @@ namespace PostHogUnity.Tests
             public PostHogConfig Config { get; }
             public FakeStorage Storage { get; }
             public EventQueue Queue { get; }
-            public Queue<BatchUploadResult> Results { get; } = new();
+            public Queue<(bool Success, int StatusCode)> Results { get; } = new();
             public List<List<PostHogEvent>> Attempts { get; } = new();
             public DateTime Now { get; set; } = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             public bool Connected { get; set; } = true;
             public Action<List<PostHogEvent>> OnSend { get; set; }
 
-            IEnumerator SendBatch(BatchPayload payload, Action<BatchUploadResult> onComplete)
+            IEnumerator SendBatch(BatchPayload payload, Action<bool, int> onComplete)
             {
                 Attempts.Add(new List<PostHogEvent>(payload.Batch));
                 OnSend?.Invoke(payload.Batch);
-                onComplete(Results.Dequeue());
+                var result = Results.Dequeue();
+                onComplete(result.Success, result.StatusCode);
                 yield break;
             }
         }
