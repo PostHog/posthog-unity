@@ -95,6 +95,17 @@ namespace PostHogUnity
         /// </summary>
         public void Enqueue(PostHogEvent evt)
         {
+            string json;
+            try
+            {
+                json = JsonSerializer.SerializeEvent(evt);
+            }
+            catch (Exception ex)
+            {
+                PostHogLogger.Error("Failed to serialize event", ex);
+                return;
+            }
+
             lock (_lock)
             {
                 var dropped = TrimQueueToSize(QueueCapacity - 1);
@@ -102,7 +113,6 @@ namespace PostHogUnity
 
                 // Queue identity is deliberately independent from the mutable payload UUID.
                 var entryId = GenerateUniqueEntryId();
-                var json = JsonSerializer.SerializeEvent(evt);
                 _storage.SaveEvent(entryId, json);
                 PostHogLogger.Debug($"Enqueued event: {evt.Event}");
             }

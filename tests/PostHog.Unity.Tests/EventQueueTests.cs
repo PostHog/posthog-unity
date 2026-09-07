@@ -38,6 +38,34 @@ namespace PostHogUnity.Tests
         }
 
         [Fact]
+        public void SerializationFailureAtCapacityPreservesExistingEntry()
+        {
+            var harness = CreateHarness(maxQueueSize: 1);
+            harness.Queue.Enqueue(Event("retained"));
+            var entry = Assert.Single(harness.Storage.GetEventIds());
+            var invalid = Event("invalid");
+            invalid.Properties["value"] = new ThrowingStringValue();
+
+            var exception = Record.Exception(() => harness.Queue.Enqueue(invalid));
+
+            Assert.Equal(entry, Assert.Single(harness.Storage.GetEventIds()));
+            Assert.Empty(harness.Storage.DeletedEventIds);
+            Assert.Null(exception);
+            harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+            Assert.Equal("retained", Assert.Single(Assert.Single(harness.Attempts)).Event);
+            Assert.Empty(harness.Storage.GetEventIds());
+        }
+
+        sealed class ThrowingStringValue
+        {
+            public override string ToString()
+            {
+                throw new InvalidOperationException("Cannot serialize property");
+            }
+        }
+
+        [Fact]
         public void DuplicatePayloadUuidsUseDistinctQueueOwnedIds()
         {
             var harness = CreateHarness();
@@ -117,6 +145,57 @@ namespace PostHogUnity.Tests
             Assert.Single(harness.Attempts);
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(503)]
+        public void MultipleRetryableFailuresThenSuccessResetRetryState(int statusCode)
+        {
+            var harness = CreateHarness();
+            harness.Queue.Enqueue(Event("retained"));
+            var entry = Assert.Single(harness.Storage.GetEventIds());
+            var delays = new[] { 5, 10, 15, 20, 25, 30, 30, 30 };
+
+            for (var attempt = 0; attempt < delays.Length; attempt++)
+            {
+                harness.Results.Enqueue((false, statusCode));
+                RunCoroutine(harness.Queue.FlushCoroutine());
+
+                Assert.Equal(attempt + 1, harness.Attempts.Count);
+                Assert.Equal(entry, Assert.Single(harness.Storage.GetEventIds()));
+                harness.Now = harness.Now.AddSeconds(delays[attempt]).AddTicks(-1);
+                RunCoroutine(harness.Queue.FlushCoroutine());
+                Assert.Equal(attempt + 1, harness.Attempts.Count);
+                harness.Now = harness.Now.AddTicks(1);
+            }
+
+            harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+
+            Assert.Equal(delays.Length + 1, harness.Attempts.Count);
+            Assert.All(
+                harness.Attempts,
+                batch => Assert.Equal("retained", Assert.Single(batch).Event)
+            );
+            Assert.Empty(harness.Storage.GetEventIds());
+
+            harness.Queue.Enqueue(Event("fresh"));
+            var freshEntry = Assert.Single(harness.Storage.GetEventIds());
+            harness.Results.Enqueue((false, statusCode));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+            Assert.Equal(delays.Length + 2, harness.Attempts.Count);
+            Assert.Equal(freshEntry, Assert.Single(harness.Storage.GetEventIds()));
+
+            harness.Now = harness.Now.AddSeconds(5).AddTicks(-1);
+            RunCoroutine(harness.Queue.FlushCoroutine());
+            Assert.Equal(delays.Length + 2, harness.Attempts.Count);
+            harness.Now = harness.Now.AddTicks(1);
+            harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+
+            Assert.Equal(delays.Length + 3, harness.Attempts.Count);
+            Assert.Empty(harness.Storage.GetEventIds());
+        }
+
         [Fact]
         public void TerminalClientFailureDeletesOnlySentEntries()
         {
@@ -152,6 +231,14 @@ namespace PostHogUnity.Tests
             Assert.Equal(3, harness.Storage.GetEventCount());
             Assert.DoesNotContain(originalIds[0], harness.Storage.GetEventIds());
             Assert.Equal(originalIds.Skip(1), harness.Storage.GetEventIds());
+            for (var i = 0; i < 3; i++)
+                harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+            Assert.Equal(
+                new[] { "event-1", "event-2", "event-3" },
+                harness.Attempts.Skip(3).SelectMany(batch => batch).Select(evt => evt.Event)
+            );
+            Assert.Empty(harness.Storage.GetEventIds());
         }
 
         [Fact]
@@ -179,6 +266,99 @@ namespace PostHogUnity.Tests
             Assert.Equal(2, harness.Attempts.Count);
             Assert.Equal(new[] { "x", "y", "z" }, harness.Attempts[1].Select(evt => evt.Event));
             Assert.Equal(3, harness.Storage.GetEventCount());
+        }
+
+        [Theory]
+        [InlineData(true, 200)]
+        [InlineData(false, 400)]
+        public void InFlightCompletionPreservesIdenticalPayloadReplacements(
+            bool success,
+            int statusCode
+        )
+        {
+            var harness = CreateHarness(maxQueueSize: 3);
+            var payload = Event("identical");
+            for (var i = 0; i < 3; i++)
+                harness.Queue.Enqueue(payload);
+            var originalIds = harness.Storage.GetEventIds().ToArray();
+            string[] replacementIds = null;
+            harness.OnSend = _ =>
+            {
+                if (replacementIds != null)
+                    return;
+                for (var i = 0; i < 3; i++)
+                    harness.Queue.Enqueue(payload);
+                replacementIds = harness.Storage.GetEventIds().ToArray();
+            };
+            harness.Results.Enqueue((success, statusCode));
+            if (success)
+                harness.Results.Enqueue((false, 503));
+
+            RunCoroutine(harness.Queue.FlushCoroutine());
+
+            Assert.Equal(replacementIds, harness.Storage.GetEventIds());
+            Assert.All(replacementIds, id => Assert.DoesNotContain(id, originalIds));
+            Assert.All(
+                harness.Attempts.SelectMany(batch => batch),
+                evt => Assert.Equal(payload.Uuid, evt.Uuid)
+            );
+            harness.Now = harness.Now.AddSeconds(5);
+            harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+            Assert.Equal(3, harness.Attempts.Last().Count);
+            Assert.Empty(harness.Storage.GetEventIds());
+        }
+
+        [Fact]
+        public void FileBackedRetryEntriesSurviveRestartAndTrimInFifoOrder()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"posthog-queue-{Guid.NewGuid()}");
+            var storage = new FileStorageProvider();
+            storage.Initialize(path);
+            var config = new PostHogConfig { ApiKey = "test-api-key", MaxQueueSize = 3 };
+            var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var results = new Queue<(bool Success, int StatusCode)>();
+            var attempts = new List<List<PostHogEvent>>();
+            IEnumerator SendBatch(BatchPayload payload, Action<bool, int> onComplete)
+            {
+                attempts.Add(new List<PostHogEvent>(payload.Batch));
+                var result = results.Dequeue();
+                onComplete(result.Success, result.StatusCode);
+                yield break;
+            }
+
+            try
+            {
+                var queue = new EventQueue(config, storage, SendBatch, () => now, () => true);
+                for (var i = 0; i < 3; i++)
+                    queue.Enqueue(Event($"event-{i}"));
+                storage.FlushPendingWrites();
+                var ids = storage.GetEventIds().ToArray();
+                results.Enqueue((false, 503));
+                RunCoroutine(queue.FlushCoroutine());
+                Assert.Equal(ids, storage.GetEventIds());
+
+                var reopened = new FileStorageProvider();
+                reopened.Initialize(path);
+                config.MaxQueueSize = 2;
+                var restarted = new EventQueue(config, reopened, SendBatch, () => now, () => true);
+                Assert.Equal(ids.Skip(1), reopened.GetEventIds());
+                Assert.Equal(2, Directory.GetFiles(Path.Combine(path, "queue")).Length);
+                results.Enqueue((true, 200));
+                RunCoroutine(restarted.FlushCoroutine());
+
+                Assert.Equal(
+                    new[] { "event-1", "event-2" },
+                    attempts.Last().Select(evt => evt.Event)
+                );
+                Assert.Empty(reopened.GetEventIds());
+                Assert.Empty(Directory.GetFiles(Path.Combine(path, "queue")));
+            }
+            finally
+            {
+                storage.FlushPendingWrites();
+                Directory.Delete(path, recursive: true);
+            }
         }
 
         [Fact]
