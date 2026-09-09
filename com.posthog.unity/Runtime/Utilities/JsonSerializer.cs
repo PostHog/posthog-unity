@@ -59,11 +59,23 @@ namespace PostHogUnity
             sb.Append(",\"timestamp\":");
             AppendEscapedString(evt.Timestamp, sb);
             sb.Append(",\"properties\":");
-            SerializeValue(evt.Properties, sb);
+            if (evt.Properties == null)
+            {
+                sb.Append("null");
+            }
+            else
+            {
+                SerializeDictionary(
+                    evt.Properties,
+                    sb,
+                    omitNullMembers: true,
+                    preserveExceptionMetadata: evt.Event == "$exception"
+                );
+            }
             sb.Append('}');
         }
 
-        static void SerializeValue(object value, StringBuilder sb)
+        static void SerializeValue(object value, StringBuilder sb, bool omitNullMembers = false)
         {
             if (value == null)
             {
@@ -101,13 +113,13 @@ namespace PostHogUnity
                     AppendEscapedString(dto.ToString("o"), sb);
                     break;
                 case IDictionary<string, object> dict:
-                    SerializeDictionary(dict, sb);
+                    SerializeDictionary(dict, sb, omitNullMembers);
                     break;
                 case IDictionary genericDict:
-                    SerializeGenericDictionary(genericDict, sb);
+                    SerializeGenericDictionary(genericDict, sb, omitNullMembers);
                     break;
                 case IList list:
-                    SerializeList(list, sb);
+                    SerializeList(list, sb, omitNullMembers);
                     break;
                 default:
                     // For other types, try to convert to string
@@ -116,12 +128,46 @@ namespace PostHogUnity
             }
         }
 
-        static void SerializeDictionary(IDictionary<string, object> dict, StringBuilder sb)
+        // Resolve only SerializeValue's fallback conversion before deciding whether to emit a member.
+        // Passing the resulting string to SerializeValue avoids calling the original ToString twice.
+        static object ResolveObjectMemberValue(object value) =>
+            value switch
+            {
+                null
+                or string
+                or bool
+                or int
+                or long
+                or float
+                or double
+                or decimal
+                or DateTime
+                or DateTimeOffset
+                or IDictionary<string, object>
+                or IDictionary
+                or IList => value,
+                _ => value.ToString(),
+            };
+
+        static void SerializeDictionary(
+            IDictionary<string, object> dict,
+            StringBuilder sb,
+            bool omitNullMembers,
+            bool preserveExceptionMetadata = false
+        )
         {
             sb.Append('{');
             bool first = true;
             foreach (var kvp in dict)
             {
+                // Exception frames have their own nullable schema; custom siblings still normalize.
+                bool omitNestedNulls =
+                    omitNullMembers && !(preserveExceptionMetadata && kvp.Key == "$exception_list");
+                var value = omitNestedNulls ? ResolveObjectMemberValue(kvp.Value) : kvp.Value;
+                if (omitNestedNulls && value == null)
+                {
+                    continue;
+                }
                 if (!first)
                 {
                     sb.Append(',');
@@ -129,17 +175,26 @@ namespace PostHogUnity
                 first = false;
                 AppendEscapedString(kvp.Key, sb);
                 sb.Append(':');
-                SerializeValue(kvp.Value, sb);
+                SerializeValue(value, sb, omitNestedNulls);
             }
             sb.Append('}');
         }
 
-        static void SerializeGenericDictionary(IDictionary dict, StringBuilder sb)
+        static void SerializeGenericDictionary(
+            IDictionary dict,
+            StringBuilder sb,
+            bool omitNullMembers
+        )
         {
             sb.Append('{');
             bool first = true;
             foreach (DictionaryEntry entry in dict)
             {
+                var value = omitNullMembers ? ResolveObjectMemberValue(entry.Value) : entry.Value;
+                if (omitNullMembers && value == null)
+                {
+                    continue;
+                }
                 if (!first)
                 {
                     sb.Append(',');
@@ -147,19 +202,19 @@ namespace PostHogUnity
                 first = false;
                 AppendEscapedString(entry.Key?.ToString() ?? "", sb);
                 sb.Append(':');
-                SerializeValue(entry.Value, sb);
+                SerializeValue(value, sb, omitNullMembers);
             }
             sb.Append('}');
         }
 
-        static void SerializeList(IList list, StringBuilder sb)
+        static void SerializeList(IList list, StringBuilder sb, bool omitNullMembers)
         {
             sb.Append("[");
             for (int i = 0; i < list.Count; i++)
             {
                 if (i > 0)
                     sb.Append(",");
-                SerializeValue(list[i], sb);
+                SerializeValue(list[i], sb, omitNullMembers);
             }
             sb.Append("]");
         }
