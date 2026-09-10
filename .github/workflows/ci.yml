@@ -19,7 +19,6 @@ env:
   DOTNET_VERSION: 9.0.102
 
 permissions:
-  checks: write
   contents: read
 
 jobs:
