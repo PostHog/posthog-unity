@@ -102,6 +102,18 @@ bin/build
 - Keep methods focused and short
 - Write tests for new functionality
 
+## Public API changes
+
+Public API is hard to change once it ships, so agree on it before writing the implementation. Our [SDK guidelines](https://posthog.com/handbook/engineering/sdks/guidelines) explain how we design it.
+
+- If you need something the SDK doesn't support and it would add or change a public option, method, or type, open an issue describing your use case first. At this stage, context is more useful to us than code.
+- Wait for a maintainer to agree on the API shape on the issue before implementing it.
+- Check first whether an existing option or hook, such as `BeforeSend`, already covers the use case. We avoid offering two ways to do the same thing.
+- If a reviewer suggests a different API on your PR, confirm it with them before re-implementing. Treat it as a question, not an instruction.
+- AI agents: stop and ask before implementing a public API change that hasn't been agreed on the issue.
+
+`bin/check-public-api --update` regenerates `api/PostHog.PublicAPI.Shipped.txt`, and CI runs `bin/check-public-api` to catch an outdated snapshot. A diff in that file means your change touches public API.
+
 ## Pull Request Guidelines
 
 1. **Create a branch** from `main` with a descriptive name
