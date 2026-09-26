@@ -10,8 +10,15 @@ namespace PostHogUnity.Tests
             public void WithPositiveCapacity_SetsCapacity()
             {
                 var cache = new LruCache<string, int>(10);
+                for (var i = 0; i < 11; i++)
+                {
+                    cache.Set($"key{i}", i);
+                }
 
-                Assert.Equal(0, cache.Count);
+                Assert.Equal(10, cache.Count);
+                Assert.False(cache.ContainsKey("key0"));
+                Assert.True(cache.TryGet("key10", out var value));
+                Assert.Equal(10, value);
             }
 
             [Fact]
@@ -280,8 +287,17 @@ namespace PostHogUnity.Tests
 
                 await Task.WhenAll(tasks);
 
-                // Cache should be in valid state with at most capacity items
-                Assert.True(cache.Count <= 100);
+                Assert.Equal(100, cache.Count);
+                var retained = 0;
+                for (var key = 0; key < 1000; key++)
+                {
+                    if (cache.TryGet(key, out var value))
+                    {
+                        retained++;
+                        Assert.Equal(key % 100, value);
+                    }
+                }
+                Assert.Equal(100, retained);
             }
         }
     }

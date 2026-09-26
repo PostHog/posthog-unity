@@ -67,6 +67,18 @@ Run tests with verbose output:
 bin/test --verbose
 ```
 
+### Code Coverage
+
+```bash
+dotnet test tests/PostHog.Unity.Tests --settings tests/coverage.runsettings \
+  --collect:"XPlat Code Coverage" --results-directory TestResults
+```
+
+The runtime sources are compiled directly into the test assembly, so the coverage
+settings include that assembly while excluding test code and the generated test
+entry point. Compare runs with the same settings and build configuration.
+Coverage measures the .NET/Unity-stub build, not native Unity or WebGL execution.
+
 ### Formatting Code
 
 Format all C# files:

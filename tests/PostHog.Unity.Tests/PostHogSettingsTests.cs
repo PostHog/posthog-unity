@@ -12,7 +12,7 @@ namespace PostHogUnity.Tests
         /// <summary>
         /// Creates an uninitialized PostHogSettings instance for testing.
         /// We use RuntimeHelpers.GetUninitializedObject to bypass ScriptableObject.CreateInstance
-        /// which requires Unity runtime. Field defaults are applied manually.
+        /// which requires Unity runtime. These are fixture values, not proof of constructor defaults.
         /// </summary>
         public static PostHogSettings CreateSettings()
         {
@@ -20,7 +20,7 @@ namespace PostHogUnity.Tests
             var settings = (PostHogSettings)
                 RuntimeHelpers.GetUninitializedObject(typeof(PostHogSettings));
 
-            // Manually set default values that would normally be set by field initializers
+            // Supply valid serialized values without exercising the native constructor.
             SetField(settings, "_host", "https://us.i.posthog.com");
             SetField(settings, "_autoInitialize", true);
             SetField(settings, "_flushAt", 20);
@@ -32,6 +32,7 @@ namespace PostHogUnity.Tests
             SetField(settings, "_logLevel", PostHogLogLevel.Warning);
             SetField(settings, "_reuseAnonymousId", false);
             SetField(settings, "_preloadFeatureFlags", true);
+            SetField(settings, "_featureFlagRequestMaxRetries", 1);
             SetField(settings, "_sendFeatureFlagEvent", true);
             SetField(settings, "_sendDefaultPersonPropertiesForFlags", true);
             SetField(settings, "_captureExceptions", true);
@@ -57,10 +58,12 @@ namespace PostHogUnity.Tests
     {
         public class TheDefaultValues
         {
-            [Fact]
+            [Fact(
+                Skip = "ScriptableObject.CreateInstance requires the Unity native runtime; constructor defaults cannot be verified with an uninitialized fixture."
+            )]
             public void MatchPostHogConfigDefaults()
             {
-                var settings = PostHogSettingsTestHelper.CreateSettings();
+                var settings = UnityEngine.ScriptableObject.CreateInstance<PostHogSettings>();
 
                 // Verify all defaults match PostHogConfig defaults
                 Assert.Null(settings.ApiKey);
@@ -75,6 +78,7 @@ namespace PostHogUnity.Tests
                 Assert.Equal(PostHogLogLevel.Warning, settings.LogLevel);
                 Assert.False(settings.ReuseAnonymousId);
                 Assert.True(settings.PreloadFeatureFlags);
+                Assert.Equal(1, settings.FeatureFlagRequestMaxRetries);
                 Assert.True(settings.SendFeatureFlagEvent);
                 Assert.True(settings.SendDefaultPersonPropertiesForFlags);
                 Assert.True(settings.CaptureExceptions);
@@ -119,6 +123,7 @@ namespace PostHogUnity.Tests
                 );
                 PostHogSettingsTestHelper.SetField(settings, "_captureExceptions", false);
                 PostHogSettingsTestHelper.SetField(settings, "_exceptionDebounceIntervalMs", 2000);
+                PostHogSettingsTestHelper.SetField(settings, "_featureFlagRequestMaxRetries", 4);
                 PostHogSettingsTestHelper.SetField(settings, "_captureExceptionsInEditor", false);
 
                 var config = settings.ToConfig();
@@ -138,18 +143,19 @@ namespace PostHogUnity.Tests
                 Assert.False(config.SendDefaultPersonPropertiesForFlags);
                 Assert.False(config.CaptureExceptions);
                 Assert.Equal(2000, config.ExceptionDebounceIntervalMs);
+                Assert.Equal(4, config.FeatureFlagRequestMaxRetries);
                 Assert.False(config.CaptureExceptionsInEditor);
             }
 
             [Fact]
-            public void WithDefaultValues_CreatesValidConfig()
+            public void WithValidSerializedValues_CreatesValidConfig()
             {
                 var settings = PostHogSettingsTestHelper.CreateSettings();
                 PostHogSettingsTestHelper.SetField(settings, "_apiKey", "phc_test_key");
 
                 var config = settings.ToConfig();
 
-                // Should not throw and should match defaults
+                config.Validate();
                 Assert.Equal("phc_test_key", config.ApiKey);
                 Assert.Equal("https://us.i.posthog.com", config.Host);
                 Assert.Equal(20, config.FlushAt);
@@ -204,6 +210,7 @@ namespace PostHogUnity.Tests
                 );
                 PostHogSettingsTestHelper.SetField(settings, "_captureExceptions", false);
                 PostHogSettingsTestHelper.SetField(settings, "_exceptionDebounceIntervalMs", 5000);
+                PostHogSettingsTestHelper.SetField(settings, "_featureFlagRequestMaxRetries", 3);
                 PostHogSettingsTestHelper.SetField(settings, "_captureExceptionsInEditor", false);
 
                 Assert.Equal("test_key", settings.ApiKey);
@@ -222,6 +229,7 @@ namespace PostHogUnity.Tests
                 Assert.False(settings.SendDefaultPersonPropertiesForFlags);
                 Assert.False(settings.CaptureExceptions);
                 Assert.Equal(5000, settings.ExceptionDebounceIntervalMs);
+                Assert.Equal(3, settings.FeatureFlagRequestMaxRetries);
                 Assert.False(settings.CaptureExceptionsInEditor);
             }
         }
@@ -260,9 +268,6 @@ namespace PostHogUnity.Tests
                 var settings = PostHogSettingsTestHelper.CreateSettings();
                 PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", true);
                 PostHogSettingsTestHelper.SetField(settings, "_apiKey", null);
-
-                // Disable logging to avoid Unity runtime dependencies
-                PostHogLogger.SetLogLevel(PostHogLogLevel.None);
                 var result = PostHogAutoInitializer.TryInitialize(settings);
 
                 Assert.Equal(PostHogAutoInitializer.InitializationResult.ApiKeyMissing, result);
@@ -274,9 +279,6 @@ namespace PostHogUnity.Tests
                 var settings = PostHogSettingsTestHelper.CreateSettings();
                 PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", true);
                 PostHogSettingsTestHelper.SetField(settings, "_apiKey", "");
-
-                // Disable logging to avoid Unity runtime dependencies
-                PostHogLogger.SetLogLevel(PostHogLogLevel.None);
                 var result = PostHogAutoInitializer.TryInitialize(settings);
 
                 Assert.Equal(PostHogAutoInitializer.InitializationResult.ApiKeyMissing, result);
@@ -288,9 +290,6 @@ namespace PostHogUnity.Tests
                 var settings = PostHogSettingsTestHelper.CreateSettings();
                 PostHogSettingsTestHelper.SetField(settings, "_autoInitialize", true);
                 PostHogSettingsTestHelper.SetField(settings, "_apiKey", "   ");
-
-                // Disable logging to avoid Unity runtime dependencies
-                PostHogLogger.SetLogLevel(PostHogLogLevel.None);
                 var result = PostHogAutoInitializer.TryInitialize(settings);
 
                 Assert.Equal(PostHogAutoInitializer.InitializationResult.ApiKeyMissing, result);

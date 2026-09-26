@@ -162,9 +162,46 @@ namespace PostHogUnity.Tests
                 Assert.False(cache.IsLoaded);
             }
 
-            // Note: QuotaLimited test removed because it triggers Unity Debug.LogWarning
-            // which isn't available in the xUnit test environment. The quota limited
-            // behavior is tested via integration tests in Unity.
+            [Fact]
+            public void QuotaLimited_ClearsFlagsAndPayloadsFromMemoryAndDisk()
+            {
+                var storage = new InMemoryStorageProvider();
+                var cache = new FlagCache(storage);
+                cache.Update(
+                    new FeatureFlagsResponse
+                    {
+                        FeatureFlags = new Dictionary<string, object> { ["v3"] = true },
+                        FeatureFlagPayloads = new Dictionary<string, object> { ["v3"] = "payload" },
+                        Flags = new Dictionary<string, FeatureFlag>
+                        {
+                            ["v4"] = new FeatureFlag
+                            {
+                                Enabled = true,
+                                Metadata = new FeatureFlagMetadata { Payload = "v4-payload" },
+                            },
+                        },
+                    }
+                );
+                Assert.Equal(true, cache.GetFlag("v3"));
+                Assert.Equal(true, cache.GetFlag("v4"));
+
+                cache.Update(
+                    new FeatureFlagsResponse { QuotaLimited = new List<string> { "feature_flags" } }
+                );
+                var reloaded = new FlagCache(storage);
+                reloaded.LoadFromDisk();
+
+                foreach (var actual in new[] { cache, reloaded })
+                {
+                    Assert.True(actual.IsLoaded);
+                    Assert.Empty(actual.GetAllFlagKeys());
+                    Assert.Null(actual.GetFlag("v3"));
+                    Assert.Null(actual.GetFlag("v4"));
+                    Assert.Null(actual.GetPayload("v3"));
+                    Assert.Null(actual.GetPayload("v4"));
+                    Assert.Null(actual.GetFlagDetails("v4"));
+                }
+            }
 
             [Fact]
             public void SavesToDisk()
@@ -180,7 +217,14 @@ namespace PostHogUnity.Tests
 
                 var savedData = storage.LoadState("feature_flags");
                 Assert.NotNull(savedData);
-                Assert.Contains("flag", savedData);
+                using var saved = System.Text.Json.JsonDocument.Parse(savedData);
+                Assert.True(
+                    saved.RootElement.GetProperty("featureFlags").GetProperty("flag").GetBoolean()
+                );
+                var reloaded = new FlagCache(storage);
+                reloaded.LoadFromDisk();
+                Assert.True(reloaded.IsLoaded);
+                Assert.Equal(true, reloaded.GetFlag("flag"));
             }
 
             [Fact]
@@ -374,8 +418,8 @@ namespace PostHogUnity.Tests
                     }
                 );
 
-                var payload = cache.GetPayload("flag");
-                Assert.NotNull(payload);
+                var payload = Assert.IsType<Dictionary<string, object>>(cache.GetPayload("flag"));
+                Assert.Equal("value", payload["key"]);
             }
 
             [Fact]
@@ -566,7 +610,8 @@ namespace PostHogUnity.Tests
                             {
                                 cache.GetFlag("flag-1-1");
                                 cache.GetPayload("flag-1-1");
-                                cache.GetAllFlagKeys();
+                                var keys = cache.GetAllFlagKeys();
+                                Assert.InRange(keys.Count, 0, 1);
                             }
                         })
                     );
@@ -575,6 +620,10 @@ namespace PostHogUnity.Tests
                 var ex = Record.Exception(() => Task.WaitAll(tasks.ToArray()));
 
                 Assert.Null(ex);
+                Assert.True(cache.IsLoaded);
+                var finalKey = Assert.Single(cache.GetAllFlagKeys());
+                Assert.Matches(@"^flag-[0-4]-99$", finalKey);
+                Assert.Equal(true, cache.GetFlag(finalKey));
             }
         }
     }

@@ -10,7 +10,7 @@ namespace PostHogUnity.Tests
     /// must opt in with <c>[Collection("UnityGlobals")]</c> — xUnit does not propagate the
     /// outer-class attribute to nested test classes.
     /// </summary>
-    [CollectionDefinition("UnityGlobals")]
+    [CollectionDefinition("UnityGlobals", DisableParallelization = true)]
     public class UnityGlobalsCollection { }
 
     /// <summary>
@@ -72,6 +72,7 @@ namespace PostHogUnity.Tests
         sealed class ThrowingLogFormatHandler : ILogHandler
         {
             public int LogExceptionCount;
+            public int LogFormatCount;
             public Exception LastException;
 
             public void LogException(Exception exception, UnityEngine.Object context)
@@ -85,7 +86,11 @@ namespace PostHogUnity.Tests
                 UnityEngine.Object context,
                 string format,
                 params object[] args
-            ) => throw new InvalidOperationException("log handler broken");
+            )
+            {
+                LogFormatCount++;
+                throw new InvalidOperationException("log handler broken");
+            }
         }
 
         [Collection("UnityGlobals")]
@@ -104,6 +109,7 @@ namespace PostHogUnity.Tests
                 var thrown = new InvalidOperationException("boom");
                 ((ILogHandler)integration).LogException(thrown, null);
 
+                Assert.Same(integration, Debug.unityLogger.logHandler);
                 Assert.Same(thrown, captured);
             }
 
@@ -145,6 +151,7 @@ namespace PostHogUnity.Tests
                 int callbackInvocations = 0;
                 integration.Register(_ => callbackInvocations++);
                 integration.Unregister();
+                Assert.Same(handler, Debug.unityLogger.logHandler);
 
                 ((ILogHandler)integration).LogException(new Exception("after"), null);
 
@@ -248,6 +255,7 @@ namespace PostHogUnity.Tests
                     // the contract under test; the forwarding guarantee is.
                 }
 
+                Assert.Equal(1, handler.LogFormatCount);
                 Assert.Equal(1, handler.LogExceptionCount);
                 Assert.Same(raised, handler.LastException);
             }
