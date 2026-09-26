@@ -103,11 +103,11 @@ namespace PostHogUnity.Tests
                 };
                 var result = JsonSerializer.Serialize(dict);
 
-                Assert.StartsWith("{", result);
-                Assert.EndsWith("}", result);
-                Assert.Contains("\"name\":\"test\"", result);
-                Assert.Contains("\"count\":42", result);
-                Assert.Contains("\"active\":true", result);
+                using var document = System.Text.Json.JsonDocument.Parse(result);
+                var root = document.RootElement;
+                Assert.Equal("test", root.GetProperty("name").GetString());
+                Assert.Equal(42, root.GetProperty("count").GetInt32());
+                Assert.True(root.GetProperty("active").GetBoolean());
             }
 
             [Fact]
@@ -180,12 +180,14 @@ namespace PostHogUnity.Tests
 
                 var result = JsonSerializer.SerializeEvent(evt);
 
-                Assert.Contains("\"event\":\"test_event\"", result);
-                Assert.Contains("\"distinct_id\":\"user123\"", result);
-                Assert.Contains("\"uuid\":", result);
-                Assert.Contains($"\"timestamp\":\"{evt.Timestamp}\"", result);
+                using var document = System.Text.Json.JsonDocument.Parse(result);
+                var root = document.RootElement;
+                Assert.Equal("test_event", root.GetProperty("event").GetString());
+                Assert.Equal("user123", root.GetProperty("distinct_id").GetString());
+                Assert.Equal(evt.Uuid, root.GetProperty("uuid").GetString());
+                Assert.Equal(evt.Timestamp, root.GetProperty("timestamp").GetString());
                 Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", evt.Timestamp);
-                Assert.Contains("\"properties\":{}", result);
+                Assert.Empty(root.GetProperty("properties").EnumerateObject());
             }
 
             [Fact]
@@ -200,8 +202,10 @@ namespace PostHogUnity.Tests
 
                 var result = JsonSerializer.SerializeEvent(evt);
 
-                Assert.Contains("\"$lib\":\"posthog-unity\"", result);
-                Assert.Contains("\"custom\":\"value\"", result);
+                using var document = System.Text.Json.JsonDocument.Parse(result);
+                var properties = document.RootElement.GetProperty("properties");
+                Assert.Equal("posthog-unity", properties.GetProperty("$lib").GetString());
+                Assert.Equal("value", properties.GetProperty("custom").GetString());
             }
         }
 
@@ -214,10 +218,12 @@ namespace PostHogUnity.Tests
 
                 var result = JsonSerializer.SerializeBatch(payload);
 
-                Assert.Contains("\"api_key\":\"test_api_key\"", result);
-                Assert.Contains($"\"sent_at\":\"{payload.SentAt}\"", result);
+                using var document = System.Text.Json.JsonDocument.Parse(result);
+                var root = document.RootElement;
+                Assert.Equal("test_api_key", root.GetProperty("api_key").GetString());
+                Assert.Equal(payload.SentAt, root.GetProperty("sent_at").GetString());
                 Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", payload.SentAt);
-                Assert.Contains("\"batch\":[]", result);
+                Assert.Empty(root.GetProperty("batch").EnumerateArray());
             }
 
             [Fact]
@@ -232,10 +238,13 @@ namespace PostHogUnity.Tests
 
                 var result = JsonSerializer.SerializeBatch(payload);
 
-                Assert.Contains("\"event\":\"event1\"", result);
-                Assert.Contains("\"event\":\"event2\"", result);
-                Assert.Contains("\"distinct_id\":\"user1\"", result);
-                Assert.Contains("\"distinct_id\":\"user2\"", result);
+                using var document = System.Text.Json.JsonDocument.Parse(result);
+                var batch = document.RootElement.GetProperty("batch");
+                Assert.Equal(2, batch.GetArrayLength());
+                Assert.Equal("event1", batch[0].GetProperty("event").GetString());
+                Assert.Equal("user1", batch[0].GetProperty("distinct_id").GetString());
+                Assert.Equal("event2", batch[1].GetProperty("event").GetString());
+                Assert.Equal("user2", batch[1].GetProperty("distinct_id").GetString());
             }
         }
 

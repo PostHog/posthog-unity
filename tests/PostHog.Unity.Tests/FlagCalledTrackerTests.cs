@@ -180,7 +180,7 @@ namespace PostHogUnity.Tests
         public class ThreadSafety
         {
             [Fact]
-            public async Task ConcurrentAccess_DoesNotCorruptState()
+            public async Task ConcurrentUniqueKeys_AreAllTrackedAndRemembered()
             {
                 var tracker = new FlagCalledTracker(1000);
                 var tasks = new List<Task>();
@@ -207,6 +207,13 @@ namespace PostHogUnity.Tests
 
                 // Each unique combination should be tracked exactly once
                 Assert.Equal(1000, trackedCount);
+                for (var threadId = 0; threadId < 10; threadId++)
+                {
+                    for (var j = 0; j < 100; j++)
+                    {
+                        Assert.False(tracker.ShouldTrack($"user-{threadId}-{j}", "flag", true));
+                    }
+                }
             }
         }
     }

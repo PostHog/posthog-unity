@@ -140,7 +140,9 @@ namespace PostHogUnity.Tests
 
                     var dict = flag.ToDictionary();
 
-                    Assert.True(dict.ContainsKey("metadata"));
+                    var metadata = Assert.IsType<Dictionary<string, object>>(dict["metadata"]);
+                    Assert.Equal(1, metadata["id"]);
+                    Assert.Equal(2, metadata["version"]);
                 }
 
                 [Fact]
@@ -153,7 +155,8 @@ namespace PostHogUnity.Tests
 
                     var dict = flag.ToDictionary();
 
-                    Assert.True(dict.ContainsKey("reason"));
+                    var reason = Assert.IsType<Dictionary<string, object>>(dict["reason"]);
+                    Assert.Equal("test", reason["description"]);
                 }
 
                 [Fact]
@@ -255,7 +258,8 @@ namespace PostHogUnity.Tests
 
                     var dict = metadata.ToDictionary();
 
-                    Assert.True(dict.ContainsKey("payload"));
+                    var payload = Assert.IsType<Dictionary<string, object>>(dict["payload"]);
+                    Assert.Equal("value", payload["key"]);
                 }
 
                 [Fact]
@@ -397,8 +401,7 @@ namespace PostHogUnity.Tests
                     var result = FeatureFlagsResponse.FromDictionary(dict);
 
                     Assert.NotNull(result.QuotaLimited);
-                    Assert.Equal(2, result.QuotaLimited.Count);
-                    Assert.Contains("flag1", result.QuotaLimited);
+                    Assert.Equal(new[] { "flag1", "flag2" }, result.QuotaLimited);
                 }
 
                 [Fact]
@@ -454,7 +457,8 @@ namespace PostHogUnity.Tests
 
                     var dict = response.ToDictionary();
 
-                    Assert.True(dict.ContainsKey("featureFlags"));
+                    var flags = Assert.IsType<Dictionary<string, object>>(dict["featureFlags"]);
+                    Assert.Equal(true, flags["flag"]);
                 }
 
                 [Fact]
@@ -470,9 +474,9 @@ namespace PostHogUnity.Tests
 
                     var dict = response.ToDictionary();
 
-                    Assert.True(dict.ContainsKey("flags"));
-                    var flags = (Dictionary<string, object>)dict["flags"];
-                    Assert.True(flags.ContainsKey("test"));
+                    var flags = Assert.IsType<Dictionary<string, object>>(dict["flags"]);
+                    var flag = Assert.IsType<Dictionary<string, object>>(flags["test"]);
+                    Assert.Equal(true, flag["enabled"]);
                 }
 
                 [Fact]
@@ -529,6 +533,10 @@ namespace PostHogUnity.Tests
                     var response = FeatureFlagsResponse.FromDictionary(original);
                     var result = response.ToDictionary();
 
+                    var flags = Assert.IsType<Dictionary<string, object>>(result["featureFlags"]);
+                    Assert.Equal(2, flags.Count);
+                    Assert.Equal(true, flags["flag1"]);
+                    Assert.Equal("variant", flags["flag2"]);
                     Assert.Equal(false, result["errorsWhileComputingFlags"]);
                     Assert.Equal("test-request", result["requestId"]);
                     Assert.Equal(1700000000L, result["evaluatedAt"]);

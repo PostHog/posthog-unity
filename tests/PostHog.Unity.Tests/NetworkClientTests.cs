@@ -8,13 +8,20 @@ namespace PostHogUnity.Tests
     {
         public class TheFeatureFlagsRetryPolicy
         {
-            [Fact]
-            public void RetriesTransientConnectionErrorsWithoutHttpStatus()
+            [Theory]
+            [InlineData(null)]
+            [InlineData("")]
+            [InlineData("TIMEOUT")]
+            [InlineData("Connection reset by peer")]
+            [InlineData("request timed out")]
+            [InlineData("EOF")]
+            [InlineData("connection lost")]
+            public void RetriesTransientConnectionErrorsWithoutHttpStatus(string error)
             {
                 var shouldRetry = NetworkClient.ShouldRetryFeatureFlagsRequest(
                     UnityWebRequest.Result.ConnectionError,
                     0,
-                    "Connection reset by peer"
+                    error
                 );
 
                 Assert.True(shouldRetry);
@@ -280,10 +287,76 @@ namespace PostHogUnity.Tests
                 Assert.Equal(retryableStatusCode, statusCode);
             }
 
+            [Theory]
+            [InlineData(0, 502)]
+            [InlineData(0, 0)]
+            [InlineData(3, 400)]
+            [InlineData(3, 401)]
+            [InlineData(3, 429)]
+            [InlineData(3, 500)]
+            [InlineData(3, 503)]
+            public void TerminalFailure_DoesNotRetryOrDelay(int maxRetries, int responseCode)
+            {
+                var request =
+                    responseCode == 0
+                        ? FakeFeatureFlagsRequest.ConnectionError("EOF")
+                        : FakeFeatureFlagsRequest.ProtocolError("HTTP error", responseCode);
+                var requests = new Queue<FakeFeatureFlagsRequest>(new[] { request });
+                var sentRequests = new List<FakeFeatureFlagsRequest>();
+                var delays = new List<int>();
+                var client = CreateRetryClient(maxRetries, requests, sentRequests, delays);
+                var completions = 0;
+
+                RunCoroutine(
+                    client.FetchFeatureFlags(
+                        "user",
+                        null,
+                        null,
+                        null,
+                        null,
+                        (json, status) =>
+                        {
+                            completions++;
+                            Assert.Null(json);
+                            Assert.Equal(responseCode, status);
+                        }
+                    )
+                );
+
+                Assert.Equal(1, completions);
+                Assert.Single(sentRequests);
+                Assert.True(request.WasSent);
+                Assert.Equal(1, request.DisposeCount);
+                Assert.Empty(delays);
+            }
+
+            [Fact]
+            public void RetryLoop_DisposesEveryRequestAndDelaysOnlyBetweenAttempts()
+            {
+                var requests = new Queue<FakeFeatureFlagsRequest>(
+                    new[]
+                    {
+                        FakeFeatureFlagsRequest.ConnectionError("EOF"),
+                        FakeFeatureFlagsRequest.ProtocolError("Bad Gateway", 502),
+                        FakeFeatureFlagsRequest.Success("{}", 200),
+                    }
+                );
+                var sentRequests = new List<FakeFeatureFlagsRequest>();
+                var delays = new List<int>();
+                var client = CreateRetryClient(3, requests, sentRequests, delays);
+
+                RunCoroutine(client.FetchFeatureFlags("user", null, null, null, null, null));
+
+                Assert.Equal(3, sentRequests.Count);
+                Assert.All(sentRequests, request => Assert.Equal(1, request.DisposeCount));
+                Assert.Equal(new[] { 1, 2 }, delays);
+            }
+
             static NetworkClient CreateRetryClient(
                 int maxRetries,
                 Queue<FakeFeatureFlagsRequest> requests,
-                List<FakeFeatureFlagsRequest> sentRequests
+                List<FakeFeatureFlagsRequest> sentRequests,
+                List<int> delays = null
             )
             {
                 return new NetworkClient(
@@ -299,7 +372,12 @@ namespace PostHogUnity.Tests
                         sentRequests.Add(request);
                         return request;
                     },
-                    _ => EmptyCoroutine()
+                    attempt =>
+                    {
+                        Assert.Equal(1, sentRequests.Last().DisposeCount);
+                        delays?.Add(attempt);
+                        return EmptyCoroutine();
+                    }
                 );
             }
 
@@ -342,6 +420,7 @@ namespace PostHogUnity.Tests
                 public string Error { get; }
                 public string Text => _text;
                 public bool WasSent { get; private set; }
+                public int DisposeCount { get; private set; }
 
                 public static FakeFeatureFlagsRequest ConnectionError(string error)
                 {
@@ -379,7 +458,7 @@ namespace PostHogUnity.Tests
                     return EmptyCoroutine();
                 }
 
-                public void Dispose() { }
+                public void Dispose() => DisposeCount++;
             }
         }
     }
