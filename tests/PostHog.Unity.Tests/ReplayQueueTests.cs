@@ -23,6 +23,69 @@ namespace PostHogUnity.Tests
             var envelope = Assert.Single(GetQueuedEvents(queue));
             Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$", envelope.Timestamp);
             Assert.Equal(123L, Assert.Single(envelope.SnapshotData).Timestamp);
+            Assert.True(Guid.TryParse(envelope.Uuid, out _));
+            var serialized = envelope.ToDictionary("test-api-key");
+            Assert.Equal("$snapshot", serialized["event"]);
+            Assert.Equal("test-api-key", serialized["api_key"]);
+            Assert.Equal("distinct-id", serialized["distinct_id"]);
+            Assert.Equal(envelope.Timestamp, serialized["timestamp"]);
+            Assert.Equal(envelope.Uuid, serialized["uuid"]);
+            var properties = Assert.IsType<Dictionary<string, object>>(serialized["properties"]);
+            Assert.Equal("session-id", properties["$session_id"]);
+            Assert.Equal("session-id", properties["$window_id"]);
+            Assert.Equal("mobile", properties["$snapshot_source"]);
+            var snapshots = Assert.IsType<List<Dictionary<string, object>>>(
+                properties["$snapshot_data"]
+            );
+            var snapshot = Assert.Single(snapshots);
+            Assert.Equal(123L, snapshot["timestamp"]);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public void Enqueue_WithoutSession_DropsSnapshot(string sessionId)
+        {
+            var queue = new ReplayQueue(
+                new PostHogSessionReplayConfig(),
+                "key",
+                "https://example.com",
+                () => "user",
+                () => sessionId
+            );
+            queue.Enqueue(new List<RREvent> { RREvent.CreateMeta(100, 200, "Home", 123L) });
+            Assert.Equal(0, queue.Count);
+        }
+
+        [Fact]
+        public void Enqueue_EmptySnapshots_DoesNotCreateEnvelope()
+        {
+            var queue = new ReplayQueue(
+                new PostHogSessionReplayConfig(),
+                "key",
+                "https://example.com",
+                () => "user",
+                () => "session"
+            );
+            queue.Enqueue(null);
+            queue.Enqueue(new List<RREvent>());
+            Assert.Equal(0, queue.Count);
+        }
+
+        [Fact]
+        public void Clear_RemovesQueuedSnapshots()
+        {
+            var queue = new ReplayQueue(
+                new PostHogSessionReplayConfig(),
+                "key",
+                "https://example.com",
+                () => "user",
+                () => "session"
+            );
+            queue.Enqueue(new List<RREvent> { RREvent.CreateMeta(100, 200, "Home", 123L) });
+            Assert.Equal(1, queue.Count);
+            queue.Clear();
+            Assert.Equal(0, queue.Count);
         }
 
         [Fact]

@@ -78,6 +78,59 @@ namespace PostHogUnity.Tests
         }
 
         [Fact]
+        public void Touch_ExtendsInactivityDeadline()
+        {
+            var now = new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc);
+            var manager = new SessionManager(() => now);
+            var original = manager.SessionId;
+            now = now.AddMinutes(29);
+            manager.Touch();
+            now = now.AddMinutes(30);
+            Assert.Equal(original, manager.SessionId);
+            now = now.AddTicks(1);
+            Assert.NotEqual(original, manager.SessionId);
+        }
+
+        [Fact]
+        public void EndSession_DoesNotRestartInBackgroundUntilForegrounded()
+        {
+            var now = new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc);
+            var manager = new SessionManager(() => now);
+            var original = manager.SessionId;
+            manager.OnBackground();
+            manager.EndSession();
+            manager.EndSession();
+            manager.Touch();
+            Assert.Null(manager.SessionId);
+            manager.OnForeground();
+            Assert.NotNull(manager.SessionId);
+            Assert.NotEqual(original, manager.SessionId);
+        }
+
+        [Fact]
+        public void OnForeground_BeforeTimeout_PreservesSession()
+        {
+            var now = new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc);
+            var manager = new SessionManager(() => now);
+            var original = manager.SessionId;
+            manager.OnBackground();
+            now = now.AddMinutes(20);
+            manager.OnForeground();
+            now = now.AddMinutes(20);
+            Assert.Equal(original, manager.SessionId);
+        }
+
+        [Fact]
+        public void StartNewSession_RotatesActiveSession()
+        {
+            var manager = new SessionManager();
+            var original = manager.SessionId;
+            manager.StartNewSession();
+            Assert.NotNull(manager.SessionId);
+            Assert.NotEqual(original, manager.SessionId);
+        }
+
+        [Fact]
         public void NewSessionManagerInstanceStartsNewSessionWithinInactivityTimeout()
         {
             var now = new DateTime(2026, 4, 2, 14, 57, 39, DateTimeKind.Utc);

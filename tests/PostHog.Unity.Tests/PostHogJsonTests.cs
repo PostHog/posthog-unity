@@ -487,8 +487,7 @@ namespace PostHogUnity.Tests
 
                 var keys = json.Keys.ToList();
 
-                Assert.Contains("a", keys);
-                Assert.Contains("b", keys);
+                Assert.Equal(new[] { "a", "b" }, keys.OrderBy(key => key));
             }
 
             [Fact]
@@ -534,8 +533,7 @@ namespace PostHogUnity.Tests
                 var result = json.AsList();
 
                 Assert.NotNull(result);
-                Assert.Equal(3, result.Count);
-                Assert.Equal(1, result[0].GetInt());
+                Assert.Equal(new[] { 1, 2, 3 }, result.Select(item => item.GetInt()));
             }
 
             [Fact]
@@ -547,7 +545,7 @@ namespace PostHogUnity.Tests
                 var result = json.AsList();
 
                 Assert.NotNull(result);
-                Assert.Equal(2, result.Count);
+                Assert.Equal(new[] { "a", "b" }, result.Select(item => item.GetString()));
             }
 
             [Fact]

@@ -16,6 +16,7 @@ namespace PostHogUnity.Tests
 
         public void Dispose()
         {
+            _storage.FlushPendingWrites();
             try
             {
                 if (Directory.Exists(_testBasePath))
@@ -206,7 +207,9 @@ namespace PostHogUnity.Tests
 
                 // Assert - file should be deleted
                 var filePath = Path.Combine(_testBasePath, "queue", $"{eventId}.json");
+                _storage.FlushPendingWrites();
                 Assert.False(File.Exists(filePath));
+                Assert.DoesNotContain(eventId, _storage.GetEventIds());
             }
 
             [Fact]
@@ -300,8 +303,9 @@ namespace PostHogUnity.Tests
                 // Act - clear immediately after save
                 _storage.Clear();
 
-                // Assert - index should be empty
+                _storage.FlushPendingWrites();
                 Assert.Empty(_storage.GetEventIds());
+                Assert.Empty(Directory.GetFiles(Path.Combine(_testBasePath, "queue"), "*.json"));
             }
 
             [Fact]
@@ -417,7 +421,14 @@ namespace PostHogUnity.Tests
 
                 // Assert
                 var ids = _storage.GetEventIds();
-                Assert.Equal(eventCount, ids.Count);
+                Assert.Equal(
+                    Enumerable
+                        .Range(0, eventCount)
+                        .Select(i => $"concurrent-{i}")
+                        .OrderBy(id => id),
+                    ids.OrderBy(id => id)
+                );
+                Assert.All(ids, id => Assert.Equal("{}", _storage.LoadEvent(id)));
             }
 
             [Fact]
@@ -475,9 +486,18 @@ namespace PostHogUnity.Tests
                 await Task.WhenAll(tasks);
                 _storage.FlushPendingWrites();
 
-                // Roughly half should remain (the odd-numbered ones)
-                var remaining = _storage.GetEventIds();
-                Assert.True(remaining.Count >= eventCount / 2 - 5); // Allow some tolerance
+                var expected = Enumerable
+                    .Range(0, eventCount)
+                    .Where(i => i % 2 != 0)
+                    .Select(i => $"save-delete-{i}")
+                    .OrderBy(id => id)
+                    .ToArray();
+                Assert.Equal(expected, _storage.GetEventIds().OrderBy(id => id));
+                var persistedIds = Directory
+                    .GetFiles(Path.Combine(_testBasePath, "queue"), "*.json")
+                    .Select(Path.GetFileNameWithoutExtension)
+                    .OrderBy(id => id);
+                Assert.Equal(expected, persistedIds);
             }
         }
     }

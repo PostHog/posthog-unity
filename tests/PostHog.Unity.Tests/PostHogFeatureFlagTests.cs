@@ -63,6 +63,7 @@ namespace PostHogUnity.Tests
                 var flag = new PostHogFeatureFlag("test-flag", true, payload);
 
                 Assert.True(flag.HasPayload);
+                Assert.Equal("value", flag.GetPayload<Dictionary<string, object>>()["key"]);
             }
 
             [Fact]
@@ -253,7 +254,8 @@ namespace PostHogUnity.Tests
 
                 var json = flag.GetPayloadJson();
 
-                Assert.False(json.IsNull);
+                Assert.True(json.IsObject);
+                Assert.True(json["enabled"].GetBool());
             }
         }
 
