@@ -95,7 +95,7 @@ bin/fmt --check
 
 The formatter uses:
 
-- `dotnet format` for code style (file-scoped namespaces, etc.)
+- `dotnet format` for code style (block-scoped namespaces, etc.)
 - [CSharpier](https://csharpier.com/) for whitespace formatting
 
 ### Building
@@ -108,7 +108,7 @@ bin/build
 
 ## Code Style
 
-- Use file-scoped namespaces
+- Use block-scoped namespaces for C# 9 compatibility with Unity 2021.3; file-scoped namespaces require C# 10
 - Follow C# naming conventions (PascalCase for public members, camelCase with underscore prefix for private fields)
 - Add XML documentation comments for public APIs
 - Keep methods focused and short
