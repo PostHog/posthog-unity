@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -366,10 +367,32 @@ namespace PostHogUnity.SessionReplay
                 batchList.Add(evt.ToDictionary(_apiKey));
             }
 
-            var json = JsonSerializer.Serialize(batchList);
-            var bodyBytes = Encoding.UTF8.GetBytes(json);
+            // Serializing and compressing a batch of screenshots takes over 100 ms on mobile, so it runs on a
+            // worker thread while this coroutine waits. None of it touches Unity APIs.
+            var prepare = Task.Run(() => PrepareBody(batchList));
+            while (!prepare.IsCompleted)
+            {
+                yield return null;
+            }
 
-            var (payloadBytes, useCompression) = PreparePayload(bodyBytes, CompressGzip);
+            if (prepare.IsFaulted || prepare.IsCanceled)
+            {
+                PostHogLogger.Error(
+                    "Failed to serialize replay batch",
+                    prepare.Exception?.GetBaseException()
+                );
+                // The same batch would fail again, so drop it like a rejected request instead of retrying it.
+                onComplete?.Invoke(false, 400);
+                yield break;
+            }
+
+            var (payloadBytes, useCompression, compressionError) = prepare.Result;
+            if (compressionError != null)
+            {
+                PostHogLogger.Warning(
+                    $"Failed to gzip replay batch, sending uncompressed: {compressionError.Message}"
+                );
+            }
             PostHogLogger.Debug(
                 $"Sending replay batch to {url} (size: {payloadBytes.Length} bytes)"
             );
@@ -405,25 +428,37 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        internal static (byte[] PayloadBytes, bool UseCompression) PreparePayload(
-            byte[] bodyBytes,
-            Func<byte[], byte[]> compressGzip
-        )
+        /// <summary>
+        /// Runs on a worker thread, so it doesn't log; the caller reports a compression error.
+        /// </summary>
+        internal static (
+            byte[] PayloadBytes,
+            bool UseCompression,
+            Exception CompressionError
+        ) PrepareBody(List<Dictionary<string, object>> batchList)
+        {
+            var json = JsonSerializer.Serialize(batchList);
+            var bodyBytes = Encoding.UTF8.GetBytes(json);
+            return PreparePayload(bodyBytes, CompressGzip);
+        }
+
+        internal static (
+            byte[] PayloadBytes,
+            bool UseCompression,
+            Exception CompressionError
+        ) PreparePayload(byte[] bodyBytes, Func<byte[], byte[]> compressGzip)
         {
             try
             {
-                return (compressGzip(bodyBytes), true);
+                return (compressGzip(bodyBytes), true, null);
             }
             catch (Exception ex)
             {
-                PostHogLogger.Warning(
-                    $"Failed to gzip replay batch, sending uncompressed: {ex.Message}"
-                );
-                return (bodyBytes, false);
+                return (bodyBytes, false, ex);
             }
         }
 
-        byte[] CompressGzip(byte[] data)
+        static byte[] CompressGzip(byte[] data)
         {
             using var output = new MemoryStream();
             using (var gzip = new GZipStream(output, CompressionMode.Compress))

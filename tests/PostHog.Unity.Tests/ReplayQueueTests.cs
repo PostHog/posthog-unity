@@ -89,12 +89,37 @@ namespace PostHogUnity.Tests
         }
 
         [Fact]
+        public void PrepareBodyGzipsSerializedBatch()
+        {
+            var batchList = new List<Dictionary<string, object>>
+            {
+                new() { ["event"] = "$snapshot", ["text"] = "caf\u00e9 \"quoted\"" },
+                new() { ["event"] = "$snapshot", ["n"] = 2 },
+            };
+
+            var (payloadBytes, useCompression, compressionError) = ReplayQueue.PrepareBody(
+                batchList
+            );
+
+            Assert.Null(compressionError);
+
+            Assert.True(useCompression);
+            using var input = new System.IO.MemoryStream(payloadBytes);
+            using var gzip = new System.IO.Compression.GZipStream(
+                input,
+                System.IO.Compression.CompressionMode.Decompress
+            );
+            using var reader = new System.IO.StreamReader(gzip, System.Text.Encoding.UTF8);
+            Assert.Equal(JsonSerializer.Serialize(batchList), reader.ReadToEnd());
+        }
+
+        [Fact]
         public void PreparePayloadCompressesSmallPayloads()
         {
             var bodyBytes = new byte[16];
             var compressedBytes = new byte[] { 1, 2, 3 };
 
-            var (payloadBytes, useCompression) = ReplayQueue.PreparePayload(
+            var (payloadBytes, useCompression, compressionError) = ReplayQueue.PreparePayload(
                 bodyBytes,
                 bytes =>
                 {
@@ -105,6 +130,7 @@ namespace PostHogUnity.Tests
 
             Assert.Same(compressedBytes, payloadBytes);
             Assert.True(useCompression);
+            Assert.Null(compressionError);
         }
 
         [Fact]
@@ -112,13 +138,14 @@ namespace PostHogUnity.Tests
         {
             var bodyBytes = new byte[16];
 
-            var (payloadBytes, useCompression) = ReplayQueue.PreparePayload(
+            var (payloadBytes, useCompression, compressionError) = ReplayQueue.PreparePayload(
                 bodyBytes,
                 _ => throw new InvalidOperationException("gzip failed")
             );
 
             Assert.Same(bodyBytes, payloadBytes);
             Assert.False(useCompression);
+            Assert.Equal("gzip failed", compressionError.Message);
         }
 
         [Theory]

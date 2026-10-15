@@ -248,6 +248,9 @@ namespace PostHogUnity.SessionReplay
             {
                 yield return waitForEndOfFrame;
 
+                // Delivers a screenshot the worker thread finished encoding since the last frame.
+                _screenshotCapture.Poll();
+
                 if (!IsActive)
                 {
                     yield return null;
@@ -363,6 +366,8 @@ namespace PostHogUnity.SessionReplay
             _lastSessionId = _getSessionId();
 
             Clear();
+            // A screenshot still being read back or encoded belongs to the previous session.
+            _screenshotCapture.CancelPending();
             _screenshotCapture.ResetThrottle();
             SendMetaEvent();
 
