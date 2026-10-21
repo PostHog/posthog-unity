@@ -129,7 +129,8 @@ namespace PostHogUnity.SessionReplay
             _isPaused = true;
             _consoleLogCapture?.Pause();
             _networkTelemetry?.Pause();
-            _replayQueue.Flush();
+            // The app is going to the background, so the request has to start before Unity's loop stops.
+            _replayQueue.Flush(prepareInline: true);
 
             PostHogLogger.Debug("Session replay paused");
         }

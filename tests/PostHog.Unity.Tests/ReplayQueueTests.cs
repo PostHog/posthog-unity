@@ -114,6 +114,87 @@ namespace PostHogUnity.Tests
         }
 
         [Fact]
+        public async Task PrepareBodyInlineMatchesPrepareBody()
+        {
+            var batchList = new List<Dictionary<string, object>>
+            {
+                new() { ["event"] = "$snapshot", ["n"] = 1 },
+            };
+
+            var prepare = ReplayQueue.PrepareBodyInline(batchList);
+
+            // Already completed: it ran on the calling thread.
+            Assert.True(prepare.IsCompletedSuccessfully);
+            var prepared = await prepare;
+            Assert.Equal(ReplayQueue.PrepareBody(batchList).PayloadBytes, prepared.PayloadBytes);
+            Assert.True(prepared.UseCompression);
+        }
+
+        [Fact]
+        public void PrepareBodyInlineReturnsSerializationFailureAsFaultedTask()
+        {
+            var batchList = new List<Dictionary<string, object>>
+            {
+                new() { ["event"] = "$snapshot", ["bad"] = new ThrowingToString() },
+            };
+
+            var prepare = ReplayQueue.PrepareBodyInline(batchList);
+
+            Assert.True(prepare.IsFaulted);
+            Assert.IsType<InvalidOperationException>(prepare.Exception.GetBaseException());
+        }
+
+        [Fact]
+        public void InlineFlushPreparesOnlyTheFirstBatchInline()
+        {
+            var harness = new ReplayHarness();
+            // MaxBatchSize is 10, so this is two batches.
+            for (var i = 0; i < 12; i++)
+                harness.Enqueue($"event-{i}");
+            harness.Results.Enqueue((true, 200));
+            harness.Results.Enqueue((true, 200));
+
+            RunCoroutine(harness.Queue.FlushCoroutine(prepareInline: true));
+
+            Assert.Equal(new[] { 10, 2 }, harness.Attempts.Select(batch => batch.Count));
+            Assert.Equal(new[] { true, false }, harness.PrepareInline);
+            Assert.Empty(GetQueuedEvents(harness.Queue));
+        }
+
+        [Fact]
+        public void DefaultFlushPreparesOnTheWorker()
+        {
+            var harness = new ReplayHarness();
+            harness.Enqueue("event");
+            harness.Results.Enqueue((true, 200));
+
+            RunCoroutine(harness.Queue.FlushCoroutine());
+
+            Assert.Equal(new[] { false }, harness.PrepareInline);
+        }
+
+        [Fact]
+        public void InlineFlushRetriesWithTheWorkerAfterAFailure()
+        {
+            var harness = new ReplayHarness();
+            harness.Enqueue("retained");
+            harness.Results.Enqueue((false, 503));
+
+            RunCoroutine(harness.Queue.FlushCoroutine(prepareInline: true));
+            harness.Now = harness.Now.AddSeconds(5);
+            harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+
+            Assert.Equal(new[] { true, false }, harness.PrepareInline);
+            Assert.Empty(GetQueuedEvents(harness.Queue));
+        }
+
+        sealed class ThrowingToString
+        {
+            public override string ToString() => throw new InvalidOperationException("bad value");
+        }
+
+        [Fact]
         public void PreparePayloadCompressesSmallPayloads()
         {
             var bodyBytes = new byte[16];
@@ -394,15 +475,21 @@ namespace PostHogUnity.Tests
             public DateTime Now { get; set; } = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             public bool Connected { get; set; } = true;
             public Action<List<SnapshotEvent>> OnSend { get; set; }
+            public List<bool> PrepareInline { get; } = new();
 
             public void Enqueue(string screenName)
             {
                 Queue.Enqueue(new List<RREvent> { RREvent.CreateMeta(100, 200, screenName, 123L) });
             }
 
-            IEnumerator SendBatch(List<SnapshotEvent> batch, Action<bool, int> onComplete)
+            IEnumerator SendBatch(
+                List<SnapshotEvent> batch,
+                bool prepareInline,
+                Action<bool, int> onComplete
+            )
             {
                 Attempts.Add(new List<SnapshotEvent>(batch));
+                PrepareInline.Add(prepareInline);
                 OnSend?.Invoke(batch);
                 var result = Results.Dequeue();
                 onComplete(result.Success, result.StatusCode);

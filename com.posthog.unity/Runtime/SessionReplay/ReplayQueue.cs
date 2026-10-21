@@ -21,7 +21,7 @@ namespace PostHogUnity.SessionReplay
         readonly string _host;
         readonly Func<string> _getDistinctId;
         readonly Func<string> _getSessionId;
-        readonly Func<List<SnapshotEvent>, Action<bool, int>, IEnumerator> _sendBatch;
+        readonly Func<List<SnapshotEvent>, bool, Action<bool, int>, IEnumerator> _sendBatch;
         readonly Func<DateTime> _utcNow;
         readonly Func<bool> _isConnected;
         readonly object _lock = new();
@@ -63,7 +63,7 @@ namespace PostHogUnity.SessionReplay
             string host,
             Func<string> getDistinctId,
             Func<string> getSessionId,
-            Func<List<SnapshotEvent>, Action<bool, int>, IEnumerator> sendBatch,
+            Func<List<SnapshotEvent>, bool, Action<bool, int>, IEnumerator> sendBatch,
             Func<DateTime> utcNow,
             Func<bool> isConnected
         )
@@ -157,7 +157,9 @@ namespace PostHogUnity.SessionReplay
         /// <summary>
         /// Flushes all events in the queue.
         /// </summary>
-        public void Flush()
+        /// <param name="prepareInline">Serialize and compress the first batch on the main thread, so its request
+        /// starts before the coroutine first yields. Use it when the app is about to be suspended.</param>
+        public void Flush(bool prepareInline = false)
         {
             if (!_isRunning)
             {
@@ -167,7 +169,7 @@ namespace PostHogUnity.SessionReplay
 
             if (_coroutineRunner != null)
             {
-                _coroutineRunner.StartCoroutine(FlushCoroutine());
+                _coroutineRunner.StartCoroutine(FlushCoroutine(prepareInline));
             }
         }
 
@@ -227,10 +229,14 @@ namespace PostHogUnity.SessionReplay
             }
         }
 
-        internal IEnumerator FlushCoroutine()
+        internal IEnumerator FlushCoroutine(bool prepareInline = false)
         {
             lock (_lock)
             {
+                // A flush already in flight makes an inline flush skip too. If it is still preparing on the
+                // worker when the app is suspended, its batch waits until the app resumes. That window is
+                // the prepare time (~100 ms) of each flush, so it is accepted rather than finished
+                // synchronously. A flush waiting on its response skips this one the same way main did.
                 if (_isFlushing)
                 {
                     PostHogLogger.Debug("Already flushing replay queue, skipping");
@@ -277,6 +283,7 @@ namespace PostHogUnity.SessionReplay
                     var statusCode = 0;
                     yield return _sendBatch(
                         batch,
+                        prepareInline,
                         (result, code) =>
                         {
                             success = result;
@@ -289,6 +296,9 @@ namespace PostHogUnity.SessionReplay
                         RemoveBatch(batch);
                         ResetRetryState();
                         PostHogLogger.Debug($"Successfully sent {batch.Count} replay events");
+                        // Only the first batch has to start before a suspend, and later batches would block
+                        // the main thread again.
+                        prepareInline = false;
                         continue;
                     }
 
@@ -357,7 +367,11 @@ namespace PostHogUnity.SessionReplay
             _pausedUntil = null;
         }
 
-        IEnumerator SendBatch(List<SnapshotEvent> events, Action<bool, int> onComplete)
+        IEnumerator SendBatch(
+            List<SnapshotEvent> events,
+            bool prepareInline,
+            Action<bool, int> onComplete
+        )
         {
             var url = $"{_host}/s/";
 
@@ -367,12 +381,22 @@ namespace PostHogUnity.SessionReplay
                 batchList.Add(evt.ToDictionary(_apiKey));
             }
 
-            // Serializing and compressing a batch of screenshots takes over 100 ms on mobile, so it runs on a
-            // worker thread while this coroutine waits. None of it touches Unity APIs.
-            var prepare = Task.Run(() => PrepareBody(batchList));
-            while (!prepare.IsCompleted)
+            Task<(byte[] PayloadBytes, bool UseCompression, Exception CompressionError)> prepare;
+            if (prepareInline)
             {
-                yield return null;
+                // The app is about to be suspended, and Unity's loop stops with it. Preparing here lets the
+                // request start before the first yield, so the OS sends it before suspending the app.
+                prepare = PrepareBodyInline(batchList);
+            }
+            else
+            {
+                // Serializing and compressing a batch of screenshots takes over 100 ms on mobile, so it runs
+                // on a worker thread while this coroutine waits. None of it touches Unity APIs.
+                prepare = Task.Run(() => PrepareBody(batchList));
+                while (!prepare.IsCompleted)
+                {
+                    yield return null;
+                }
             }
 
             if (prepare.IsFaulted || prepare.IsCanceled)
@@ -425,6 +449,26 @@ namespace PostHogUnity.SessionReplay
                     $"Replay batch send failed: {request.error} (status: {statusCode})"
                 );
                 onComplete?.Invoke(false, statusCode);
+            }
+        }
+
+        /// <summary>
+        /// Runs <see cref="PrepareBody"/> on the calling thread, returning a failure as a faulted task so the
+        /// caller handles both paths the same way.
+        /// </summary>
+        internal static Task<(
+            byte[] PayloadBytes,
+            bool UseCompression,
+            Exception CompressionError
+        )> PrepareBodyInline(List<Dictionary<string, object>> batchList)
+        {
+            try
+            {
+                return Task.FromResult(PrepareBody(batchList));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException<(byte[], bool, Exception)>(ex);
             }
         }
 
