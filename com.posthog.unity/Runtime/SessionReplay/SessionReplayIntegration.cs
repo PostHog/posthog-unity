@@ -296,15 +296,24 @@ namespace PostHogUnity.SessionReplay
             }
 
             var screenName = _currentScreenName;
+            var sessionId = _lastSessionId;
 
             _screenshotCapture.CaptureScreenshotAsync(result =>
             {
-                OnScreenshotCaptured(result, touchEvents, networkSamples, logs, screenName);
+                OnScreenshotCaptured(
+                    result,
+                    sessionId,
+                    touchEvents,
+                    networkSamples,
+                    logs,
+                    screenName
+                );
             });
         }
 
         void OnScreenshotCaptured(
             ScreenshotResult result,
+            string sessionId,
             List<RREvent> touchEvents,
             List<NetworkSample> networkSamples,
             List<LogEntry> logs,
@@ -313,6 +322,14 @@ namespace PostHogUnity.SessionReplay
         {
             if (result == null)
                 return;
+
+            // The session can change while the screenshot is read back and encoded (Reset, expiry), and the
+            // capture loop only notices on a later frame, or not at all while paused.
+            if (!ShouldEnqueueScreenshot(_isRunning, sessionId, _getSessionId()))
+            {
+                PostHogLogger.Debug("SessionReplay: Dropping screenshot from a previous session");
+                return;
+            }
 
             var events = new List<RREvent>();
 
@@ -349,6 +366,19 @@ namespace PostHogUnity.SessionReplay
 
             PostHogLogger.Debug($"SessionReplay: Enqueueing {events.Count} events");
             _replayQueue.Enqueue(events);
+        }
+
+        /// <summary>
+        /// A screenshot is enqueued only under the session it was captured in, so a frame from before a
+        /// rotation never lands in the new session.
+        /// </summary>
+        internal static bool ShouldEnqueueScreenshot(
+            bool isRunning,
+            string capturedSessionId,
+            string currentSessionId
+        )
+        {
+            return isRunning && capturedSessionId == currentSessionId;
         }
 
         void SendMetaEvent()
