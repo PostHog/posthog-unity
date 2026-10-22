@@ -86,10 +86,18 @@ namespace PostHogUnity
                     sb.Append(l.ToString(CultureInfo.InvariantCulture));
                     break;
                 case float f:
-                    sb.Append(f.ToString(CultureInfo.InvariantCulture));
+                    sb.Append(
+                        float.IsNaN(f) || float.IsInfinity(f)
+                            ? "null"
+                            : f.ToString(CultureInfo.InvariantCulture)
+                    );
                     break;
                 case double d:
-                    sb.Append(d.ToString(CultureInfo.InvariantCulture));
+                    sb.Append(
+                        double.IsNaN(d) || double.IsInfinity(d)
+                            ? "null"
+                            : d.ToString(CultureInfo.InvariantCulture)
+                    );
                     break;
                 case decimal dec:
                     sb.Append(dec.ToString(CultureInfo.InvariantCulture));

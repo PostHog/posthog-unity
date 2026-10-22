@@ -76,6 +76,20 @@ namespace PostHogUnity.Tests
                 Assert.Equal("3.14", result);
             }
 
+            [Theory]
+            [InlineData(float.NaN)]
+            [InlineData(float.PositiveInfinity)]
+            [InlineData(float.NegativeInfinity)]
+            [InlineData(double.NaN)]
+            [InlineData(double.PositiveInfinity)]
+            [InlineData(double.NegativeInfinity)]
+            public void WithNonFiniteNumber_ReturnsNull(object value)
+            {
+                var result = JsonSerializer.Serialize(value);
+
+                Assert.Equal("null", result);
+            }
+
             [Fact]
             public void WithEmptyDictionary_ReturnsEmptyObject()
             {
