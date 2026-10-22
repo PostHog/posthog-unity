@@ -1,12 +1,15 @@
 using System;
+using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 namespace PostHogUnity.SessionReplay
 {
     /// <summary>
     /// Captures and encodes screenshots for session replay with frame sampling.
-    /// Uses AsyncGPUReadback to avoid blocking the main thread during capture.
+    /// The GPU scales the screenshot, AsyncGPUReadback brings it back without blocking, and the JPEG and
+    /// base64 encoding run on a worker thread. <see cref="Poll"/> hands the result back on the main thread.
     /// </summary>
     class ScreenshotCapture
     {
@@ -15,7 +18,13 @@ namespace PostHogUnity.SessionReplay
         readonly Vector2 _blitOffset;
 
         float _lastCaptureTime;
+
+        // True from the capture request until Poll hands the encoded result back, so the next capture
+        // can't overwrite _pixels while the worker is still reading it.
         bool _isCapturing;
+
+        // Incremented by CancelPending so a readback requested before it is ignored.
+        int _generation;
 
         // Reusable render textures to avoid allocations
         RenderTexture _fullRT;
@@ -24,6 +33,11 @@ namespace PostHogUnity.SessionReplay
         int _lastScreenHeight;
         int _lastScaledWidth;
         int _lastScaledHeight;
+
+        // Readback pixels, reused between captures.
+        byte[] _pixels;
+        Task<ScreenshotResult> _encodeTask;
+        Action<ScreenshotResult> _onComplete;
 
         public ScreenshotCapture(PostHogSessionReplayConfig config)
         {
@@ -51,7 +65,8 @@ namespace PostHogUnity.SessionReplay
         /// Captures a screenshot asynchronously using AsyncGPUReadback.
         /// Requires AsyncGPUReadback support (checked at session replay start).
         /// </summary>
-        /// <param name="onComplete">Callback with the screenshot result, or null if capture failed.</param>
+        /// <param name="onComplete">Called on the main thread with the screenshot result, or null if capture
+        /// failed. A successful result is delivered by <see cref="Poll"/>.</param>
         public void CaptureScreenshotAsync(Action<ScreenshotResult> onComplete)
         {
             if (!CanCapture())
@@ -75,6 +90,7 @@ namespace PostHogUnity.SessionReplay
 
                 long timestamp = GetTimestampMs();
                 int quality = _config.ScreenshotQuality;
+                int generation = _generation;
 
                 EnsureRenderTextures(screenWidth, screenHeight, scaledWidth, scaledHeight);
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(_fullRT);
@@ -91,6 +107,7 @@ namespace PostHogUnity.SessionReplay
                     {
                         OnReadbackComplete(
                             request,
+                            generation,
                             scaledWidth,
                             scaledHeight,
                             screenWidth,
@@ -108,6 +125,34 @@ namespace PostHogUnity.SessionReplay
                 _isCapturing = false;
                 onComplete?.Invoke(null);
             }
+        }
+
+        /// <summary>
+        /// Hands a finished encode to its callback on the main thread. Call it every frame; it does nothing
+        /// while no encode is pending or the worker is still running.
+        /// </summary>
+        public void Poll()
+        {
+            if (_encodeTask == null || !_encodeTask.IsCompleted)
+                return;
+
+            var task = _encodeTask;
+            var onComplete = _onComplete;
+            _encodeTask = null;
+            _onComplete = null;
+            _isCapturing = false;
+
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                PostHogLogger.Error(
+                    "Failed to encode screenshot",
+                    task.Exception?.GetBaseException()
+                );
+                onComplete?.Invoke(null);
+                return;
+            }
+
+            onComplete?.Invoke(task.Result);
         }
 
         void EnsureRenderTextures(
@@ -167,6 +212,7 @@ namespace PostHogUnity.SessionReplay
 
         void OnReadbackComplete(
             AsyncGPUReadbackRequest request,
+            int generation,
             int scaledWidth,
             int scaledHeight,
             int screenWidth,
@@ -176,10 +222,12 @@ namespace PostHogUnity.SessionReplay
             Action<ScreenshotResult> onComplete
         )
         {
-            _isCapturing = false;
+            if (generation != _generation)
+                return;
 
             if (request.hasError)
             {
+                _isCapturing = false;
                 PostHogLogger.Error("AsyncGPUReadback error during screenshot capture");
                 onComplete?.Invoke(null);
                 return;
@@ -187,35 +235,72 @@ namespace PostHogUnity.SessionReplay
 
             try
             {
+                // The readback data is only valid during this callback, so copy it for the worker.
                 var data = request.GetData<byte>();
-
-                var texture = new Texture2D(scaledWidth, scaledHeight, TextureFormat.RGBA32, false);
-                texture.LoadRawTextureData(data);
-                texture.Apply();
-
-                byte[] jpegBytes = texture.EncodeToJPG(quality);
-                UnityEngine.Object.Destroy(texture);
-
-                string base64 = Convert.ToBase64String(jpegBytes);
-                string dataUrl = $"data:image/jpeg;base64,{base64}";
+                if (_pixels == null || _pixels.Length != data.Length)
+                    _pixels = new byte[data.Length];
+                data.CopyTo(_pixels);
 
                 var result = new ScreenshotResult
                 {
-                    Base64Data = dataUrl,
                     Width = scaledWidth,
                     Height = scaledHeight,
                     OriginalWidth = screenWidth,
                     OriginalHeight = screenHeight,
                     Timestamp = timestamp,
                 };
-
-                onComplete?.Invoke(result);
+                var pixels = _pixels;
+                _encodeTask = Task.Run(() =>
+                {
+                    result.Base64Data = Encode(pixels, result.Width, result.Height, quality);
+                    return result;
+                });
+                _onComplete = onComplete;
             }
             catch (Exception ex)
             {
+                _isCapturing = false;
+                _encodeTask = null;
+                _onComplete = null;
                 PostHogLogger.Error("Failed to process screenshot readback", ex);
                 onComplete?.Invoke(null);
             }
+        }
+
+        /// <summary>
+        /// Runs on a worker thread, so it uses no Unity APIs except the thread-safe ImageConversion encoder.
+        /// </summary>
+        static string Encode(byte[] rgba, int width, int height, int quality)
+        {
+            // RGBA32 sRGB readback, matching the Texture2D(RGBA32, linear: false) previously encoded from.
+            byte[] jpegBytes = ImageConversion.EncodeArrayToJPG(
+                rgba,
+                GraphicsFormat.R8G8B8A8_SRGB,
+                (uint)width,
+                (uint)height,
+                0,
+                quality
+            );
+            return ToJpegDataUrl(jpegBytes);
+        }
+
+        /// <summary>
+        /// Builds "data:image/jpeg;base64,..." in a single string instead of a base64 string plus a copy.
+        /// </summary>
+        internal static string ToJpegDataUrl(byte[] jpegBytes)
+        {
+            const string prefix = "data:image/jpeg;base64,";
+            int base64Length = (jpegBytes.Length + 2) / 3 * 4;
+            return string.Create(
+                prefix.Length + base64Length,
+                jpegBytes,
+                (chars, bytes) =>
+                {
+                    prefix.AsSpan().CopyTo(chars);
+                    if (!Convert.TryToBase64Chars(bytes, chars.Slice(prefix.Length), out _))
+                        throw new InvalidOperationException("Base64 buffer size mismatch");
+                }
+            );
         }
 
         /// <summary>
@@ -235,10 +320,25 @@ namespace PostHogUnity.SessionReplay
         }
 
         /// <summary>
-        /// Releases render texture resources.
+        /// Drops a readback or encode still in flight, so its screenshot is never delivered.
+        /// </summary>
+        public void CancelPending()
+        {
+            _generation++;
+            _encodeTask = null;
+            _onComplete = null;
+            // The dropped worker may still be reading the old buffer.
+            _pixels = null;
+            _isCapturing = false;
+        }
+
+        /// <summary>
+        /// Releases render texture resources. A readback or encode still in flight is dropped.
         /// </summary>
         public void Dispose()
         {
+            CancelPending();
+
             if (_fullRT != null)
             {
                 _fullRT.Release();

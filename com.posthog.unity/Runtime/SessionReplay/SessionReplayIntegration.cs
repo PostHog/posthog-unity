@@ -129,7 +129,8 @@ namespace PostHogUnity.SessionReplay
             _isPaused = true;
             _consoleLogCapture?.Pause();
             _networkTelemetry?.Pause();
-            _replayQueue.Flush();
+            // The app is going to the background, so the request has to start before Unity's loop stops.
+            _replayQueue.Flush(prepareInline: true);
 
             PostHogLogger.Debug("Session replay paused");
         }
@@ -248,6 +249,9 @@ namespace PostHogUnity.SessionReplay
             {
                 yield return waitForEndOfFrame;
 
+                // Delivers a screenshot the worker thread finished encoding since the last frame.
+                _screenshotCapture.Poll();
+
                 if (!IsActive)
                 {
                     yield return null;
@@ -293,15 +297,24 @@ namespace PostHogUnity.SessionReplay
             }
 
             var screenName = _currentScreenName;
+            var sessionId = _lastSessionId;
 
             _screenshotCapture.CaptureScreenshotAsync(result =>
             {
-                OnScreenshotCaptured(result, touchEvents, networkSamples, logs, screenName);
+                OnScreenshotCaptured(
+                    result,
+                    sessionId,
+                    touchEvents,
+                    networkSamples,
+                    logs,
+                    screenName
+                );
             });
         }
 
         void OnScreenshotCaptured(
             ScreenshotResult result,
+            string sessionId,
             List<RREvent> touchEvents,
             List<NetworkSample> networkSamples,
             List<LogEntry> logs,
@@ -310,6 +323,14 @@ namespace PostHogUnity.SessionReplay
         {
             if (result == null)
                 return;
+
+            // The session can change while the screenshot is read back and encoded (Reset, expiry), and the
+            // capture loop only notices on a later frame, or not at all while paused.
+            if (!ShouldEnqueueScreenshot(_isRunning, sessionId, _getSessionId()))
+            {
+                PostHogLogger.Debug("SessionReplay: Dropping screenshot from a previous session");
+                return;
+            }
 
             var events = new List<RREvent>();
 
@@ -348,6 +369,19 @@ namespace PostHogUnity.SessionReplay
             _replayQueue.Enqueue(events);
         }
 
+        /// <summary>
+        /// A screenshot is enqueued only under the session it was captured in, so a frame from before a
+        /// rotation never lands in the new session.
+        /// </summary>
+        internal static bool ShouldEnqueueScreenshot(
+            bool isRunning,
+            string capturedSessionId,
+            string currentSessionId
+        )
+        {
+            return isRunning && capturedSessionId == currentSessionId;
+        }
+
         void SendMetaEvent()
         {
             var timestamp = ScreenshotCapture.GetTimestampMs();
@@ -363,6 +397,8 @@ namespace PostHogUnity.SessionReplay
             _lastSessionId = _getSessionId();
 
             Clear();
+            // A screenshot still being read back or encoded belongs to the previous session.
+            _screenshotCapture.CancelPending();
             _screenshotCapture.ResetThrottle();
             SendMetaEvent();
 
