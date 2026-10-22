@@ -65,6 +65,99 @@ namespace PostHogUnity.Tests
             }
         }
 
+        [Theory]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        [InlineData(float.NegativeInfinity)]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        public void NonFinitePropertiesRoundTripAsNullWithoutLosingNeighbors(object value)
+        {
+            var harness = CreateHarness();
+            var nested = new Dictionary<string, object>
+            {
+                ["before"] = 1,
+                ["bad"] = value,
+                ["after"] = 2,
+            };
+            var items = new object[] { 1, value, 2, nested };
+            var properties = new Dictionary<string, object>
+            {
+                ["before"] = 1,
+                ["bad"] = value,
+                ["nested"] = nested,
+                ["items"] = items,
+                ["float"] = 1.5f,
+                ["double"] = -2.5d,
+                ["zero"] = 0,
+                ["enabled"] = true,
+                ["disabled"] = false,
+                ["null"] = null,
+                ["literals"] = new[] { "NaN", "Infinity", "-Infinity" },
+                ["after"] = 42,
+            };
+            var evt = new PostHogEvent("non-finite", "distinct-id", properties);
+            var healthy = Event("healthy");
+            healthy.Properties["answer"] = 7;
+
+            harness.Queue.Enqueue(evt);
+            harness.Queue.Enqueue(healthy);
+
+            var ids = harness.Storage.GetEventIds();
+            Assert.Equal(2, ids.Count);
+            // Validate strict JSON before the custom parser can read any invalid array tokens.
+            using (
+                var stored = System.Text.Json.JsonDocument.Parse(harness.Storage.LoadEvent(ids[0]))
+            )
+            {
+                AssertProperties(stored.RootElement.GetProperty("properties"));
+            }
+
+            harness.Results.Enqueue((true, 200));
+            RunCoroutine(harness.Queue.FlushCoroutine());
+
+            var batch = Assert.Single(harness.Attempts);
+            Assert.Equal(new[] { "non-finite", "healthy" }, batch.Select(item => item.Event));
+            Assert.Equal(evt.Uuid, batch[0].Uuid);
+            Assert.Equal(evt.DistinctId, batch[0].DistinctId);
+            Assert.Equal(evt.Timestamp, batch[0].Timestamp);
+            using var sent = System.Text.Json.JsonDocument.Parse(
+                JsonSerializer.SerializeBatch(new BatchPayload("test-api-key", batch))
+            );
+            var sentBatch = sent.RootElement.GetProperty("batch");
+            Assert.Equal(2, sentBatch.GetArrayLength());
+            AssertProperties(sentBatch[0].GetProperty("properties"));
+            Assert.Equal(
+                7,
+                sentBatch[1].GetProperty("properties").GetProperty("answer").GetInt32()
+            );
+            Assert.Empty(harness.Storage.GetEventIds());
+            Assert.Same(value, properties["bad"]);
+            Assert.Same(nested, properties["nested"]);
+            Assert.Same(items, properties["items"]);
+            Assert.Same(value, nested["bad"]);
+            Assert.Same(value, items[1]);
+            Assert.Same(nested, items[3]);
+
+            static void AssertProperties(System.Text.Json.JsonElement actual)
+            {
+                var expected = System.Text.Json.Nodes.JsonNode.Parse(
+                    "{\"before\":1,\"bad\":null,\"nested\":{\"before\":1,\"bad\":null,\"after\":2},"
+                        + "\"items\":[1,null,2,{\"before\":1,\"bad\":null,\"after\":2}],"
+                        + "\"float\":1.5,\"double\":-2.5,\"zero\":0,\"enabled\":true,\"disabled\":false,"
+                        + "\"null\":null,\"literals\":[\"NaN\",\"Infinity\",\"-Infinity\"],\"after\":42}"
+                );
+                Assert.True(
+                    System.Text.Json.Nodes.JsonNode.DeepEquals(
+                        expected,
+                        System.Text.Json.Nodes.JsonNode.Parse(actual.GetRawText())
+                    ),
+                    actual.GetRawText()
+                );
+            }
+        }
+
         [Fact]
         public void DuplicatePayloadUuidsUseDistinctQueueOwnedIds()
         {
