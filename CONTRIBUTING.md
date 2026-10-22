@@ -2,6 +2,10 @@
 
 Thank you for your interest in contributing to the PostHog Unity SDK! This document provides guidelines and instructions for development.
 
+## Commit signing
+
+This repo requires all commits to be signed. To configure commit signing, see the [PostHog handbook](https://posthog.com/handbook/engineering/security#commit-signing). Set `commit.gpgsign` to `true` in your git config so that every commit is signed, not only the ones you sign by hand.
+
 ## Development Setup
 
 ### Prerequisites
@@ -143,6 +147,7 @@ This section is for external contributors. PostHog maintainers (members of the P
 
 ### PR Checklist
 
+- [ ] All commits are signed (see [Commit signing](#commit-signing))
 - [ ] Tests pass (`bin/test`)
 - [ ] Code is formatted (`bin/fmt --check`)
 - [ ] Documentation updated (if applicable)
