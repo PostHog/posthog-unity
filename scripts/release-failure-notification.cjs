@@ -68,7 +68,7 @@ module.exports = async function releaseFailureNotification({ github, context, ch
         return null;
     }
 
-    const releaseCreated = jobs.some(job => isJob(job, releaseJob) && job.conclusion === 'success'
+    const releaseCreated = jobs.some(job => isJob(job, releaseJob)
         && job.steps?.some(step => step.name === 'Create GitHub Release' && step.conclusion === 'success'));
     const releasedNotification = jobs.find(job => job.name === 'Notify Slack - Released');
     const problems = failedJobs.map(job => `• <${job.html_url}|${job.name}>: ${job.conclusion}`);
