@@ -91,3 +91,13 @@ Ensure your PR includes a changeset file in `.changeset/`. Run `pnpm changeset` 
 ### Need to re-run a failed release
 
 Go to [Actions > Release](../../actions/workflows/release.yml) and click **Run workflow**.
+
+### Failed or cancelled release
+
+The independent [release failure notification workflow](.github/workflows/release-failure-notification.yml) checks every completed main-branch release attempt and alerts if a job failed, timed out, or was cancelled. It also alerts when the run failed but the version bump, commit, and tag job never ran, which happens when GitHub Actions stops mid-run. Once the GitHub release exists, alerts describe follow-up problems rather than claiming the release failed. The workflow still alerts if the GitHub release exists but the released Slack notification was skipped.
+
+Cancelled runs with no jobs are ignored, including superseded queued runs and manual cancellations before any job is created. A version-bump failure before any steps ran is also ignored when the rejection-reply step confirms an explicit rejection in the same attempt and no other job failed.
+
+Job inspection retries transient GitHub API failures up to three times. If inspection still fails, it logs the HTTP status or error type and message, then posts a fallback alert with the overall run status and logs link so the release can be checked manually. Error diagnostics stay in the run log, not in the Slack message.
+
+Alerts reply to the approval thread in the release approvals Slack channel. The release workflow preserves the thread timestamp in a run artifact for 30 days, independently of release approval. Failed-job reruns reuse the latest available thread from the same or an earlier attempt. If the timestamp is missing, invalid, or unavailable, the alert falls back to a new channel message. The completion workflow must be present on the default branch to run; local tests do not send Slack messages.
