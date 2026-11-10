@@ -94,7 +94,7 @@ Go to [Actions > Release](../../actions/workflows/release.yml) and click **Run w
 
 ### Failed or cancelled release
 
-The independent [release failure notification workflow](.github/workflows/release-failure-notification.yml) checks every completed main-branch release attempt and alerts if a job failed, timed out, or was cancelled. It also alerts when the run failed but the version bump, commit, and tag job never ran, which happens when GitHub Actions stops mid-run. Once the GitHub release exists, alerts describe follow-up problems rather than claiming the release failed. The workflow still alerts if the GitHub release exists but the released Slack notification was skipped.
+The independent [release failure notification workflow](.github/workflows/release-failure-notification.yml) checks every completed main-branch release attempt and alerts if a job failed, timed out, or was cancelled. It also alerts when the run failed but the version bump, commit, and tag job never ran, which happens when GitHub Actions stops mid-run. Once the GitHub release exists, alerts describe follow-up problems rather than claiming the release failed. The workflow still alerts if the GitHub release exists but the released Slack notification was skipped. It only acts on runs that a push or a manual dispatch started in this repository.
 
 Cancelled runs with no jobs are ignored, including superseded queued runs and manual cancellations before any job is created. A version-bump failure before any steps ran is also ignored when the rejection-reply step confirms an explicit rejection in the same attempt and no other job failed.
 
