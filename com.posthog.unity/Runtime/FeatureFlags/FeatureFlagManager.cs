@@ -22,6 +22,7 @@ namespace PostHogUnity
 
         readonly object _loadingLock = new();
         bool _isLoading;
+        long _cacheGeneration;
         List<Action> _pendingCallbacks;
 
         Dictionary<string, object> _personPropertiesForFlags;
@@ -117,6 +118,11 @@ namespace PostHogUnity
 
         IEnumerator FetchFlagsCoroutine(Action onComplete)
         {
+            long generation;
+            lock (_loadingLock)
+            {
+                generation = _cacheGeneration;
+            }
             var distinctId = _getDistinctId();
             var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
             var groups = _getGroups();
@@ -132,12 +138,12 @@ namespace PostHogUnity
                 _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
                 (json, statusCode) =>
                 {
-                    OnFetchComplete(json, statusCode, onComplete);
+                    OnFetchComplete(json, statusCode, onComplete, generation);
                 }
             );
         }
 
-        void OnFetchComplete(string json, int statusCode, Action onComplete)
+        void OnFetchComplete(string json, int statusCode, Action onComplete, long generation)
         {
             if (!string.IsNullOrEmpty(json))
             {
@@ -147,10 +153,19 @@ namespace PostHogUnity
                     if (dict != null)
                     {
                         var response = FeatureFlagsResponse.FromDictionary(dict);
-                        _flagCache.Update(response);
+                        lock (_loadingLock)
+                        {
+                            // Invalidation must also exclude late writes to persistent cache.
+                            if (generation == _cacheGeneration)
+                            {
+                                _flagCache.Update(response);
 
-                        var flagCount = response.FeatureFlags?.Count ?? 0;
-                        PostHogLogger.Debug($"Loaded {flagCount} feature flags from server");
+                                var flagCount = response.FeatureFlags?.Count ?? 0;
+                                PostHogLogger.Debug(
+                                    $"Loaded {flagCount} feature flags from server"
+                                );
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -300,8 +315,12 @@ namespace PostHogUnity
         /// </summary>
         public void Clear()
         {
-            _flagCache.Clear();
-            ResetFlagCallTracking();
+            lock (_loadingLock)
+            {
+                _cacheGeneration++;
+                _flagCache.Clear();
+                ResetFlagCallTracking();
+            }
         }
 
         #region Person Properties for Flags
@@ -534,13 +553,7 @@ namespace PostHogUnity
             // Add default properties if enabled
             if (hasDefaultProperties)
             {
-                merged["$app_version"] = Application.version;
-                merged["$app_build"] = Application.buildGUID;
-                merged["$os_name"] = PlatformInfo.GetOperatingSystem();
-                merged["$os_version"] = SystemInfo.operatingSystem;
-                merged["$device_type"] = PlatformInfo.GetDeviceType();
-                merged["$lib"] = SdkInfo.LibraryName;
-                merged["$lib_version"] = SdkInfo.Version;
+                AddDefaultPersonProperties(merged);
             }
 
             // Override with custom properties
@@ -550,6 +563,18 @@ namespace PostHogUnity
             }
 
             return merged;
+        }
+
+        // Keep native Unity getters off the custom-properties-only path.
+        static void AddDefaultPersonProperties(Dictionary<string, object> properties)
+        {
+            properties["$app_version"] = Application.version;
+            properties["$app_build"] = Application.buildGUID;
+            properties["$os_name"] = PlatformInfo.GetOperatingSystem();
+            properties["$os_version"] = SystemInfo.operatingSystem;
+            properties["$device_type"] = PlatformInfo.GetDeviceType();
+            properties["$lib"] = SdkInfo.LibraryName;
+            properties["$lib_version"] = SdkInfo.Version;
         }
 
         #endregion
