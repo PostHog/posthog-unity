@@ -13,6 +13,11 @@ namespace PostHogUnity
         public bool? Enabled { get; set; }
 
         /// <summary>
+        /// Whether evaluation failed and no value is available.
+        /// </summary>
+        public bool Failed { get; set; }
+
+        /// <summary>
         /// The variant name (for multivariate flags).
         /// </summary>
         public string Variant { get; set; }
@@ -32,6 +37,9 @@ namespace PostHogUnity
         /// </summary>
         public object GetValue()
         {
+            if (Failed)
+                return null;
+
             if (!string.IsNullOrEmpty(Variant))
             {
                 return Variant;
@@ -48,7 +56,10 @@ namespace PostHogUnity
             if (dict == null)
                 return null;
 
-            var flag = new FeatureFlag();
+            var flag = new FeatureFlag
+            {
+                Failed = dict.TryGetValue("failed", out var failed) && failed is true,
+            };
 
             if (dict.TryGetValue("enabled", out var enabled) && enabled is bool b)
             {
@@ -85,6 +96,11 @@ namespace PostHogUnity
         public Dictionary<string, object> ToDictionary()
         {
             var dict = new Dictionary<string, object>();
+
+            if (Failed)
+            {
+                dict["failed"] = true;
+            }
 
             if (Enabled.HasValue)
             {

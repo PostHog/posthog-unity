@@ -1036,7 +1036,10 @@ namespace PostHogUnity
             var payload = _featureFlagManager.GetPayload(key);
 
             // Track flag access for experiments
-            if (value != null && _config.SendFeatureFlagEvent)
+            if (
+                _config.SendFeatureFlagEvent
+                && (value != null || _featureFlagManager.GetFlagDetails(key)?.Failed == true)
+            )
             {
                 _featureFlagManager.TrackFlagCalled(key, value);
             }

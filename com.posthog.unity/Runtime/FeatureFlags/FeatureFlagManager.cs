@@ -255,6 +255,20 @@ namespace PostHogUnity
             }
 
             var flagDetails = _flagCache.GetFlagDetails(key);
+            var errors = new List<string>();
+            if (value == null && flagDetails?.Failed == true)
+            {
+                errors.Add("evaluation_failed");
+            }
+            if (_flagCache.ErrorsWhileComputingFlags)
+            {
+                errors.Add("errors_while_computing_flags");
+            }
+            if (errors.Count > 0)
+            {
+                properties["$feature_flag_error"] = string.Join(",", errors);
+            }
+
             if (flagDetails != null)
             {
                 if (flagDetails.Metadata != null)

@@ -19,6 +19,18 @@ namespace PostHogUnity
         string _requestId;
         long? _evaluatedAt;
         bool _isLoaded;
+        bool _errorsWhileComputingFlags;
+
+        public bool ErrorsWhileComputingFlags
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _errorsWhileComputingFlags;
+                }
+            }
+        }
 
         public FlagCache(IStorageProvider storage)
         {
@@ -97,6 +109,7 @@ namespace PostHogUnity
                                 _requestId = response.RequestId;
                                 _evaluatedAt = response.EvaluatedAt;
                                 _isLoaded = true;
+                                _errorsWhileComputingFlags = response.ErrorsWhileComputingFlags;
                             }
                             PostHogLogger.Debug(
                                 $"Loaded {_featureFlags.Count} feature flags from cache"
@@ -128,6 +141,7 @@ namespace PostHogUnity
                         Flags = _flagsV4,
                         RequestId = _requestId,
                         EvaluatedAt = _evaluatedAt,
+                        ErrorsWhileComputingFlags = _errorsWhileComputingFlags,
                     };
                 }
 
@@ -161,14 +175,68 @@ namespace PostHogUnity
                 }
                 else
                 {
-                    _featureFlags = response.FeatureFlags ?? new Dictionary<string, object>();
-                    _featureFlagPayloads =
-                        response.FeatureFlagPayloads ?? new Dictionary<string, object>();
-                    _flagsV4 = response.Flags ?? new Dictionary<string, FeatureFlag>();
+                    _featureFlags = response.ErrorsWhileComputingFlags
+                        ? new Dictionary<string, object>(_featureFlags)
+                        : new Dictionary<string, object>();
+                    _featureFlagPayloads = response.ErrorsWhileComputingFlags
+                        ? new Dictionary<string, object>(_featureFlagPayloads)
+                        : new Dictionary<string, object>();
+                    _flagsV4 = response.ErrorsWhileComputingFlags
+                        ? new Dictionary<string, FeatureFlag>(_flagsV4)
+                        : new Dictionary<string, FeatureFlag>();
+
+                    if (response.FeatureFlags != null)
+                    {
+                        foreach (var kvp in response.FeatureFlags)
+                        {
+                            if (
+                                response.Flags?.TryGetValue(kvp.Key, out var detail) == true
+                                && detail.Failed
+                            )
+                                continue;
+
+                            _featureFlags[kvp.Key] = kvp.Value;
+                            _flagsV4.Remove(kvp.Key);
+                            _featureFlagPayloads.Remove(kvp.Key);
+                        }
+                    }
+
+                    if (response.FeatureFlagPayloads != null)
+                    {
+                        foreach (var kvp in response.FeatureFlagPayloads)
+                        {
+                            if (
+                                response.Flags?.TryGetValue(kvp.Key, out var detail) == true
+                                && detail.Failed
+                            )
+                                continue;
+
+                            _featureFlagPayloads[kvp.Key] = kvp.Value;
+                        }
+                    }
+
+                    if (response.Flags != null)
+                    {
+                        foreach (var kvp in response.Flags)
+                        {
+                            // Failed records carry diagnostics, not replacement decisions.
+                            if (kvp.Value.Failed && GetFlag(kvp.Key) != null)
+                                continue;
+
+                            _flagsV4[kvp.Key] = kvp.Value;
+                            _featureFlags.Remove(kvp.Key);
+                            if (
+                                kvp.Value.Failed
+                                || response.FeatureFlagPayloads?.ContainsKey(kvp.Key) != true
+                            )
+                                _featureFlagPayloads.Remove(kvp.Key);
+                        }
+                    }
                 }
 
                 _requestId = response.RequestId;
                 _evaluatedAt = response.EvaluatedAt;
+                _errorsWhileComputingFlags = response.ErrorsWhileComputingFlags;
                 _isLoaded = true;
             }
 
@@ -188,6 +256,7 @@ namespace PostHogUnity
                 _requestId = null;
                 _evaluatedAt = null;
                 _isLoaded = false;
+                _errorsWhileComputingFlags = false;
             }
 
             try
@@ -238,9 +307,12 @@ namespace PostHogUnity
             lock (_lock)
             {
                 // Try v4 format first (payload in metadata)
-                if (_flagsV4.TryGetValue(key, out var v4Flag) && v4Flag.Metadata?.Payload != null)
+                if (_flagsV4.TryGetValue(key, out var v4Flag))
                 {
-                    return v4Flag.Metadata.Payload;
+                    if (v4Flag.Failed)
+                        return null;
+                    if (v4Flag.Metadata?.Payload != null)
+                        return v4Flag.Metadata.Payload;
                 }
 
                 // Fall back to v3 format
@@ -281,9 +353,12 @@ namespace PostHogUnity
                     keys.Add(key);
                 }
 
-                foreach (var key in _flagsV4.Keys)
+                foreach (var kvp in _flagsV4)
                 {
-                    keys.Add(key);
+                    if (kvp.Value.Failed)
+                        keys.Remove(kvp.Key);
+                    else
+                        keys.Add(kvp.Key);
                 }
 
                 return new List<string>(keys);

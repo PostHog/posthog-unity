@@ -138,6 +138,195 @@ namespace PostHogUnity.Tests
             }
         }
 
+        public class TheFeatureFlagGetters
+        {
+            static PostHogSDK CreateSdk(PostHogConfig config, FeatureFlagManager manager)
+            {
+                var sdk = (PostHogSDK)RuntimeHelpers.GetUninitializedObject(typeof(PostHogSDK));
+                typeof(PostHogSDK)
+                    .GetField("_config", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(sdk, config);
+                typeof(PostHogSDK)
+                    .GetField("_featureFlagManager", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(sdk, manager);
+                return sdk;
+            }
+
+            static void CompleteFetch(FeatureFlagManager manager, string json)
+            {
+                typeof(FeatureFlagManager)
+                    .GetMethod("OnFetchComplete", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(manager, new object[] { json, 200, null });
+            }
+
+            [Theory]
+            [InlineData(true)]
+            [InlineData(false)]
+            [InlineData("blue")]
+            public void ErroredRefresh_TracksRetainedSuccessfulValueWithoutEvaluationFailed(
+                object value
+            )
+            {
+                var captured = new List<Dictionary<string, object>>();
+                var config = new PostHogConfig { ApiKey = "test" };
+                var manager = new FeatureFlagManager(
+                    config,
+                    new InMemoryStorageProvider(),
+                    new NetworkClient(config),
+                    () => "user",
+                    () => "anon",
+                    () => new Dictionary<string, string>(),
+                    (_, properties) => captured.Add(properties)
+                );
+                CompleteFetch(
+                    manager,
+                    JsonSerializer.Serialize(
+                        new Dictionary<string, object>
+                        {
+                            ["featureFlags"] = new Dictionary<string, object>
+                            {
+                                ["checkout"] = value,
+                            },
+                            ["featureFlagPayloads"] = new Dictionary<string, object>
+                            {
+                                ["checkout"] = "successful",
+                            },
+                        }
+                    )
+                );
+                CompleteFetch(
+                    manager,
+                    "{\"errorsWhileComputingFlags\":true,\"flags\":{\"checkout\":{\"enabled\":false,\"failed\":true,\"metadata\":{\"payload\":\"bad\"}}}}"
+                );
+                var sdk = CreateSdk(config, manager);
+
+                var flag = Assert.IsType<PostHogFeatureFlag>(
+                    typeof(PostHogSDK)
+                        .GetMethod(
+                            "GetFeatureFlagInternal",
+                            BindingFlags.Instance | BindingFlags.NonPublic
+                        )
+                        .Invoke(sdk, new object[] { "checkout" })
+                );
+
+                Assert.True(flag.Value.HasValue);
+                Assert.Equal("successful", flag.GetPayload<string>());
+                var evt = Assert.Single(captured);
+                Assert.Equal(value, evt["$feature_flag_response"]);
+                Assert.Equal("errors_while_computing_flags", evt["$feature_flag_error"]);
+            }
+
+            [Theory]
+            [InlineData(true, null, true)]
+            [InlineData(false, null, true)]
+            [InlineData(null, null, true)]
+            [InlineData(true, "placeholder", true)]
+            [InlineData(false, "placeholder", true)]
+            [InlineData(null, "placeholder", true)]
+            [InlineData(true, "placeholder", false)]
+            public void FailedDetails_UseMissingResultAndEventResponseNotCallerDefault(
+                bool? errors,
+                string variant,
+                bool sendEvent
+            )
+            {
+                var captured = new List<Dictionary<string, object>>();
+                var config = new PostHogConfig
+                {
+                    ApiKey = "test",
+                    SendFeatureFlagEvent = sendEvent,
+                };
+                var manager = new FeatureFlagManager(
+                    config,
+                    new InMemoryStorageProvider(),
+                    new NetworkClient(config),
+                    () => "user",
+                    () => "anon",
+                    () => new Dictionary<string, string>(),
+                    (name, properties) =>
+                    {
+                        Assert.Equal("$feature_flag_called", name);
+                        captured.Add(properties);
+                    }
+                );
+                var response = new Dictionary<string, object>
+                {
+                    ["flags"] = new Dictionary<string, object>
+                    {
+                        ["checkout"] = new Dictionary<string, object>
+                        {
+                            ["enabled"] = false,
+                            ["failed"] = true,
+                            ["variant"] = variant,
+                            ["metadata"] = new Dictionary<string, object>
+                            {
+                                ["id"] = 42,
+                                ["version"] = 3,
+                                ["payload"] = "bad",
+                            },
+                            ["reason"] = new Dictionary<string, object>
+                            {
+                                ["description"] = "dependency error",
+                            },
+                        },
+                        ["disabled"] = new Dictionary<string, object>
+                        {
+                            ["enabled"] = false,
+                            ["failed"] = false,
+                        },
+                    },
+                    ["requestId"] = "request",
+                };
+                if (errors.HasValue)
+                    response["errorsWhileComputingFlags"] = errors.Value;
+                CompleteFetch(manager, JsonSerializer.Serialize(response));
+                var sdk = CreateSdk(config, manager);
+                var getFlag = typeof(PostHogSDK).GetMethod(
+                    "GetFeatureFlagInternal",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+                var isEnabled = typeof(PostHogSDK).GetMethod(
+                    "IsFeatureEnabledInternal",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+
+                Assert.True((bool)isEnabled.Invoke(sdk, new object[] { "checkout", true }));
+                var result = Assert.IsType<PostHogFeatureFlag>(
+                    getFlag.Invoke(sdk, new object[] { "checkout" })
+                );
+                Assert.False(result.Value.HasValue);
+                Assert.False(result.HasPayload);
+                Assert.False((bool)isEnabled.Invoke(sdk, new object[] { "disabled", true }));
+
+                if (!sendEvent)
+                {
+                    Assert.Empty(captured);
+                    return;
+                }
+                Assert.Equal(2, captured.Count);
+                var failed = captured[0];
+                Assert.Equal("", failed["$feature_flag_response"]);
+                Assert.Equal(
+                    errors == true
+                        ? "evaluation_failed,errors_while_computing_flags"
+                        : "evaluation_failed",
+                    failed["$feature_flag_error"]
+                );
+                Assert.Equal("request", failed["$feature_flag_request_id"]);
+                Assert.Equal(42, failed["$feature_flag_id"]);
+                Assert.Equal(3, failed["$feature_flag_version"]);
+                Assert.Equal("dependency error", failed["$feature_flag_reason"]);
+                Assert.Equal(false, captured[1]["$feature_flag_response"]);
+                if (errors == true)
+                    Assert.Equal(
+                        "errors_while_computing_flags",
+                        captured[1]["$feature_flag_error"]
+                    );
+                else
+                    Assert.False(captured[1].ContainsKey("$feature_flag_error"));
+            }
+        }
+
         public class TheBeforeSendCallback
         {
             [Fact]
