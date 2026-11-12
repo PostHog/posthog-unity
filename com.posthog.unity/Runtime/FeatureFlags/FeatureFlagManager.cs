@@ -23,6 +23,7 @@ namespace PostHogUnity
         readonly object _loadingLock = new();
         bool _isLoading;
         long _cacheGeneration;
+        long? _queuedReloadGeneration;
         List<Action> _pendingCallbacks;
 
         Dictionary<string, object> _personPropertiesForFlags;
@@ -97,6 +98,7 @@ namespace PostHogUnity
             {
                 if (_isLoading)
                 {
+                    _queuedReloadGeneration = _cacheGeneration;
                     // Queue callback for when current load completes
                     if (onComplete != null)
                     {
@@ -118,32 +120,36 @@ namespace PostHogUnity
 
         IEnumerator FetchFlagsCoroutine(Action onComplete)
         {
-            long generation;
-            lock (_loadingLock)
+            while (true)
             {
-                generation = _cacheGeneration;
-            }
-            var distinctId = _getDistinctId();
-            var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
-            var groups = _getGroups();
-
-            // Merge default person properties with custom properties for flags
-            var personProperties = GetMergedPersonProperties();
-
-            yield return _networkClient.FetchFeatureFlags(
-                distinctId,
-                anonymousId,
-                groups,
-                personProperties,
-                _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
-                (json, statusCode) =>
+                long generation;
+                lock (_loadingLock)
                 {
-                    OnFetchComplete(json, statusCode, onComplete, generation);
+                    generation = _cacheGeneration;
                 }
-            );
+                var distinctId = _getDistinctId();
+                var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
+                var groups = _getGroups();
+
+                var personProperties = GetMergedPersonProperties();
+                var completed = false;
+                yield return _networkClient.FetchFeatureFlags(
+                    distinctId,
+                    anonymousId,
+                    groups,
+                    personProperties,
+                    _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
+                    (json, statusCode) =>
+                    {
+                        completed = OnFetchComplete(json, statusCode, onComplete, generation);
+                    }
+                );
+                if (completed)
+                    yield break;
+            }
         }
 
-        void OnFetchComplete(string json, int statusCode, Action onComplete, long generation)
+        bool OnFetchComplete(string json, int statusCode, Action onComplete, long generation)
         {
             if (!string.IsNullOrEmpty(json))
             {
@@ -182,7 +188,11 @@ namespace PostHogUnity
             List<Action> callbacksToInvoke;
             lock (_loadingLock)
             {
+                if (generation != _cacheGeneration && _queuedReloadGeneration == _cacheGeneration)
+                    return false;
+
                 _isLoading = false;
+                _queuedReloadGeneration = null;
                 callbacksToInvoke = _pendingCallbacks;
                 _pendingCallbacks = new List<Action>();
             }
@@ -210,6 +220,7 @@ namespace PostHogUnity
             {
                 PostHogLogger.Error("Error in OnFeatureFlagsLoaded event handler", ex);
             }
+            return true;
         }
 
         /// <summary>

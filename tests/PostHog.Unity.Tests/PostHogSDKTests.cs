@@ -437,7 +437,7 @@ namespace PostHogUnity.Tests
             [InlineData(true, false, false)]
             [InlineData(true, true, false)]
             [InlineData(false, false, true)]
-            public async Task IdentityInvalidation_DiscardsLateResponseAndSettlesCallbacks(
+            public async Task IdentityInvalidation_FetchesCurrentIdentityBeforeSettlingCallbacks(
                 bool reset,
                 bool reuseAnonymousId,
                 bool roundTrip
@@ -447,7 +447,6 @@ namespace PostHogUnity.Tests
                 if (reuseAnonymousId)
                     await fixture.ResetAsync();
                 var originalId = fixture.Identity.DistinctId;
-                fixture.LoadSuccessfulFlags("blue", rich: true);
                 var completions = 0;
                 var loadedEvents = 0;
                 fixture.Manager.OnFeatureFlagsLoaded += () => loadedEvents++;
@@ -470,6 +469,24 @@ namespace PostHogUnity.Tests
                 var waiter = fixture.Manager.ReloadFeatureFlagsAsync(null);
                 Assert.False(waiter.IsCompleted);
 
+                fixture.CompleteResponse(pending);
+
+                Assert.False(transition.IsCompleted);
+                Assert.False(waiter.IsCompleted);
+                if (roundTrip)
+                    Assert.False(returnTransition.IsCompleted);
+                Assert.Equal(0, completions);
+                Assert.Equal(0, loadedEvents);
+                Assert.Null(fixture.Manager.GetFlag("late"));
+                Assert.Null(fixture.Manager.GetPayload("late"));
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Storage.LoadState("feature_flags"));
+
+                pending = fixture.ContinueFetch(pending, CurrentIdentityResponse);
+                Assert.Equal(2, fixture.RequestedIds.Count);
+                Assert.Equal(fixture.Identity.DistinctId, fixture.RequestedIds.Last());
+                Assert.False(transition.IsCompleted);
+                Assert.False(waiter.IsCompleted);
                 fixture.CompleteFetch(pending);
 
                 Assert.True(transition.IsCompletedSuccessfully);
@@ -480,22 +497,137 @@ namespace PostHogUnity.Tests
                 await waiter;
                 Assert.Equal(1, completions);
                 Assert.Equal(1, loadedEvents);
-                Assert.Null(fixture.Manager.GetFlag("late"));
-                Assert.Null(fixture.Manager.GetPayload("late"));
-                Assert.False(fixture.Manager.IsLoaded);
-                Assert.Null(fixture.Storage.LoadState("feature_flags"));
-
-                fixture.Fetch(ErroredResponse);
-                Assert.Equal(fixture.Identity.DistinctId, fixture.RequestedIds.Last());
-                Assert.Equal(false, fixture.Manager.GetFlag("healthy"));
-                Assert.Null(fixture.Manager.GetFlag("checkout"));
+                Assert.True(fixture.Manager.IsLoaded);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+                Assert.Equal("new-payload", fixture.Manager.GetPayload("current"));
                 Assert.Null(fixture.Manager.GetFlag("late"));
                 var persisted = new FlagCache(fixture.Storage);
                 persisted.LoadFromDisk();
+                Assert.Equal(false, persisted.GetFlag("current"));
+                Assert.Equal("new-payload", persisted.GetPayload("current"));
                 Assert.Null(persisted.GetFlag("late"));
                 Assert.Null(persisted.GetPayload("late"));
-                Assert.Null(persisted.RequestId);
-                Assert.Null(persisted.EvaluatedAt);
+                Assert.Equal("current-request", persisted.RequestId);
+                Assert.Equal(200L, persisted.EvaluatedAt);
+            }
+
+            const string CurrentIdentityResponse =
+                "{\"featureFlags\":{\"current\":false},\"featureFlagPayloads\":{\"current\":\"new-payload\"},\"requestId\":\"current-request\",\"evaluatedAt\":200}";
+
+            [Fact]
+            public async Task ConcurrentReloadsWithoutInvalidation_ShareTheCurrentRequest()
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                var first = fixture.Manager.ReloadFeatureFlagsAsync(null);
+                var second = fixture.Manager.ReloadFeatureFlagsAsync(null);
+
+                Assert.False(first.IsCompleted);
+                Assert.False(second.IsCompleted);
+                fixture.CompleteFetch(pending);
+
+                await first;
+                await second;
+                Assert.Single(fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+            }
+
+            [Theory]
+            [InlineData(false)]
+            [InlineData(true)]
+            public async Task IdentityInvalidationWithoutQueuedReload_DoesNotFetchAgain(bool reset)
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+
+                if (reset)
+                    await fixture.ResetAsync();
+                else
+                    await fixture.IdentifyAsync("user-b");
+                fixture.CompleteFetch(pending);
+
+                Assert.Single(fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Manager.GetFlag("current"));
+                Assert.Null(fixture.Storage.LoadState("feature_flags"));
+            }
+
+            [Theory]
+            [InlineData(null)]
+            [InlineData("not-json")]
+            public async Task QueuedIdentityReload_WithUnusableResponse_CompletesWithoutAnotherFetch(
+                string response
+            )
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                fixture.Config.PreloadFeatureFlags = true;
+                var transition = fixture.IdentifyAsync("user-b");
+                fixture.CompleteResponse(pending);
+                Assert.False(transition.IsCompleted);
+
+                pending = fixture.ContinueFetch(pending, response);
+                fixture.CompleteFetch(pending);
+
+                await transition;
+                Assert.Equal(new[] { "user-a", "user-b" }, fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Manager.GetFlag("current"));
+            }
+
+            [Fact]
+            public async Task QueuedIdentityReload_UsesLatestIdentityAfterAnotherInvalidation()
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                fixture.Config.PreloadFeatureFlags = true;
+                var first = fixture.IdentifyAsync("user-b");
+                fixture.CompleteResponse(pending);
+                Assert.False(first.IsCompleted);
+
+                pending = fixture.ContinueFetch(pending, "{\"featureFlags\":{\"wrong-b\":true}}");
+                var second = fixture.IdentifyAsync("user-c");
+                fixture.CompleteResponse(pending);
+                Assert.False(first.IsCompleted);
+                Assert.False(second.IsCompleted);
+                Assert.Equal(0, completions);
+                Assert.Null(fixture.Manager.GetFlag("wrong-b"));
+
+                pending = fixture.ContinueFetch(pending, CurrentIdentityResponse);
+                fixture.CompleteFetch(pending);
+
+                await first;
+                await second;
+                Assert.Equal(new[] { "user-a", "user-b", "user-c" }, fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+                Assert.Null(fixture.Manager.GetFlag("wrong-b"));
+            }
+
+            [Fact]
+            public async Task FireAndForgetReloadAfterInvalidation_RefreshesBeforeNotifying()
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                await fixture.IdentifyAsync("user-b");
+                fixture.Manager.ReloadFeatureFlags(null);
+                fixture.CompleteResponse(pending);
+                Assert.Equal(0, completions);
+
+                pending = fixture.ContinueFetch(pending, CurrentIdentityResponse);
+                fixture.CompleteFetch(pending);
+
+                Assert.Equal(new[] { "user-a", "user-b" }, fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
             }
 
             [Fact]
@@ -655,9 +787,24 @@ namespace PostHogUnity.Tests
                     return (outer, request);
                 }
 
+                public void CompleteResponse((IEnumerator Outer, IEnumerator Request) pending) =>
+                    Assert.False(pending.Request.MoveNext());
+
+                public (IEnumerator Outer, IEnumerator Request) ContinueFetch(
+                    (IEnumerator Outer, IEnumerator Request) pending,
+                    string json
+                )
+                {
+                    _responses.Enqueue(json);
+                    Assert.True(pending.Outer.MoveNext());
+                    var request = Assert.IsAssignableFrom<IEnumerator>(pending.Outer.Current);
+                    Assert.True(request.MoveNext());
+                    return (pending.Outer, request);
+                }
+
                 public void CompleteFetch((IEnumerator Outer, IEnumerator Request) pending)
                 {
-                    Assert.False(pending.Request.MoveNext());
+                    CompleteResponse(pending);
                     Assert.False(pending.Outer.MoveNext());
                 }
             }
