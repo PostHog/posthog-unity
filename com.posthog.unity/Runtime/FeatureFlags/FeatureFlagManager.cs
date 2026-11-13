@@ -22,6 +22,8 @@ namespace PostHogUnity
 
         readonly object _loadingLock = new();
         bool _isLoading;
+        long _cacheGeneration;
+        long? _queuedReloadGeneration;
         List<Action> _pendingCallbacks;
 
         Dictionary<string, object> _personPropertiesForFlags;
@@ -96,6 +98,7 @@ namespace PostHogUnity
             {
                 if (_isLoading)
                 {
+                    _queuedReloadGeneration = _cacheGeneration;
                     // Queue callback for when current load completes
                     if (onComplete != null)
                     {
@@ -117,27 +120,36 @@ namespace PostHogUnity
 
         IEnumerator FetchFlagsCoroutine(Action onComplete)
         {
-            var distinctId = _getDistinctId();
-            var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
-            var groups = _getGroups();
-
-            // Merge default person properties with custom properties for flags
-            var personProperties = GetMergedPersonProperties();
-
-            yield return _networkClient.FetchFeatureFlags(
-                distinctId,
-                anonymousId,
-                groups,
-                personProperties,
-                _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
-                (json, statusCode) =>
+            while (true)
+            {
+                long generation;
+                lock (_loadingLock)
                 {
-                    OnFetchComplete(json, statusCode, onComplete);
+                    generation = _cacheGeneration;
                 }
-            );
+                var distinctId = _getDistinctId();
+                var anonymousId = _config.ReuseAnonymousId ? null : _getAnonymousId();
+                var groups = _getGroups();
+
+                var personProperties = GetMergedPersonProperties();
+                var completed = false;
+                yield return _networkClient.FetchFeatureFlags(
+                    distinctId,
+                    anonymousId,
+                    groups,
+                    personProperties,
+                    _groupPropertiesForFlags.Count > 0 ? _groupPropertiesForFlags : null,
+                    (json, statusCode) =>
+                    {
+                        completed = OnFetchComplete(json, statusCode, onComplete, generation);
+                    }
+                );
+                if (completed)
+                    yield break;
+            }
         }
 
-        void OnFetchComplete(string json, int statusCode, Action onComplete)
+        bool OnFetchComplete(string json, int statusCode, Action onComplete, long generation)
         {
             if (!string.IsNullOrEmpty(json))
             {
@@ -147,10 +159,19 @@ namespace PostHogUnity
                     if (dict != null)
                     {
                         var response = FeatureFlagsResponse.FromDictionary(dict);
-                        _flagCache.Update(response);
+                        lock (_loadingLock)
+                        {
+                            // Invalidation must also exclude late writes to persistent cache.
+                            if (generation == _cacheGeneration)
+                            {
+                                _flagCache.Update(response);
 
-                        var flagCount = response.FeatureFlags?.Count ?? 0;
-                        PostHogLogger.Debug($"Loaded {flagCount} feature flags from server");
+                                var flagCount = response.FeatureFlags?.Count ?? 0;
+                                PostHogLogger.Debug(
+                                    $"Loaded {flagCount} feature flags from server"
+                                );
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -167,7 +188,11 @@ namespace PostHogUnity
             List<Action> callbacksToInvoke;
             lock (_loadingLock)
             {
+                if (generation != _cacheGeneration && _queuedReloadGeneration == _cacheGeneration)
+                    return false;
+
                 _isLoading = false;
+                _queuedReloadGeneration = null;
                 callbacksToInvoke = _pendingCallbacks;
                 _pendingCallbacks = new List<Action>();
             }
@@ -195,6 +220,7 @@ namespace PostHogUnity
             {
                 PostHogLogger.Error("Error in OnFeatureFlagsLoaded event handler", ex);
             }
+            return true;
         }
 
         /// <summary>
@@ -255,6 +281,20 @@ namespace PostHogUnity
             }
 
             var flagDetails = _flagCache.GetFlagDetails(key);
+            var errors = new List<string>();
+            if (value == null && flagDetails?.Failed == true)
+            {
+                errors.Add("evaluation_failed");
+            }
+            if (_flagCache.ErrorsWhileComputingFlags)
+            {
+                errors.Add("errors_while_computing_flags");
+            }
+            if (errors.Count > 0)
+            {
+                properties["$feature_flag_error"] = string.Join(",", errors);
+            }
+
             if (flagDetails != null)
             {
                 if (flagDetails.Metadata != null)
@@ -286,8 +326,12 @@ namespace PostHogUnity
         /// </summary>
         public void Clear()
         {
-            _flagCache.Clear();
-            ResetFlagCallTracking();
+            lock (_loadingLock)
+            {
+                _cacheGeneration++;
+                _flagCache.Clear();
+                ResetFlagCallTracking();
+            }
         }
 
         #region Person Properties for Flags
@@ -520,13 +564,7 @@ namespace PostHogUnity
             // Add default properties if enabled
             if (hasDefaultProperties)
             {
-                merged["$app_version"] = Application.version;
-                merged["$app_build"] = Application.buildGUID;
-                merged["$os_name"] = PlatformInfo.GetOperatingSystem();
-                merged["$os_version"] = SystemInfo.operatingSystem;
-                merged["$device_type"] = PlatformInfo.GetDeviceType();
-                merged["$lib"] = SdkInfo.LibraryName;
-                merged["$lib_version"] = SdkInfo.Version;
+                AddDefaultPersonProperties(merged);
             }
 
             // Override with custom properties
@@ -536,6 +574,18 @@ namespace PostHogUnity
             }
 
             return merged;
+        }
+
+        // Keep native Unity getters off the custom-properties-only path.
+        static void AddDefaultPersonProperties(Dictionary<string, object> properties)
+        {
+            properties["$app_version"] = Application.version;
+            properties["$app_build"] = Application.buildGUID;
+            properties["$os_name"] = PlatformInfo.GetOperatingSystem();
+            properties["$os_version"] = SystemInfo.operatingSystem;
+            properties["$device_type"] = PlatformInfo.GetDeviceType();
+            properties["$lib"] = SdkInfo.LibraryName;
+            properties["$lib_version"] = SdkInfo.Version;
         }
 
         #endregion

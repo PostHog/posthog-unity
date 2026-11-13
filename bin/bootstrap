@@ -117,20 +117,11 @@ if ! command -v dotnet &> /dev/null; then
     echo ""
 fi
 
-# Check for CSharpier (formatting tool)
+# Restore repository-pinned .NET tools (including CSharpier).
 if command -v dotnet &> /dev/null; then
-    if ! dotnet tool list -g | grep -q csharpier; then
-        echo "CSharpier is not installed."
-        read -r -p "Install CSharpier globally? [Y/n]: " install_csharpier
-        install_csharpier="${install_csharpier:-Y}"
-        if [[ "$install_csharpier" =~ ^[Yy]$ ]]; then
-            dotnet tool install -g csharpier
-        else
-            echo "  Run 'dotnet tool install -g csharpier' when ready."
-            needs_install=true
-        fi
-        echo ""
-    fi
+    echo "Restoring .NET tools..."
+    dotnet tool restore
+    echo ""
 fi
 
 # Summary

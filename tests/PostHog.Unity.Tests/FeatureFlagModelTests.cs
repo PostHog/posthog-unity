@@ -8,6 +8,37 @@ namespace PostHogUnity.Tests
         {
             public class TheGetValueMethod
             {
+                [Theory]
+                [InlineData(true, null)]
+                [InlineData(true, "placeholder")]
+                [InlineData(false, null)]
+                [InlineData(null, null)]
+                public void FailureMarker_RoundTripsWithoutManufacturingAValue(
+                    bool? failed,
+                    string variant
+                )
+                {
+                    var dict = new Dictionary<string, object>
+                    {
+                        ["enabled"] = false,
+                        ["variant"] = variant,
+                    };
+                    if (failed.HasValue)
+                        dict["failed"] = failed.Value;
+
+                    var flag = FeatureFlag.FromDictionary(dict);
+                    var reloaded = FeatureFlag.FromDictionary(flag.ToDictionary());
+
+                    foreach (var actual in new[] { flag, reloaded })
+                    {
+                        Assert.Equal(failed == true, actual.Failed);
+                        if (failed == true)
+                            Assert.Null(actual.GetValue());
+                        else
+                            Assert.Equal(false, actual.GetValue());
+                    }
+                }
+
                 [Fact]
                 public void WithVariant_ReturnsVariant()
                 {

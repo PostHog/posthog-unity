@@ -102,6 +102,10 @@ The formatter uses:
 - `dotnet format` for code style (block-scoped namespaces, etc.)
 - [CSharpier](https://csharpier.com/) for whitespace formatting
 
+`bin/bootstrap` and `bin/fmt` restore the CSharpier version pinned in
+`.config/dotnet-tools.json`. Formatting uses that local tool, not a global
+installation, so local checks and CI use the same version.
+
 ### Building
 
 Build the SDK to verify it compiles:

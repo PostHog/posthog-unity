@@ -133,6 +133,130 @@ namespace PostHogUnity.Tests
 
         public class TheUpdateMethod
         {
+            [Theory]
+            [InlineData(true)]
+            [InlineData(false)]
+            [InlineData(null)]
+            public void FailedDetails_DoNotServeValuesPayloadsOrFlatMirrors(bool? errors)
+            {
+                var storage = new InMemoryStorageProvider();
+                var cache = new FlagCache(storage);
+                var dict = JsonSerializer.DeserializeDictionary(
+                    "{\"flags\":{\"failed\":{\"enabled\":false,\"variant\":\"placeholder\",\"failed\":true,\"metadata\":{\"payload\":\"bad\"}},\"disabled\":{\"enabled\":false,\"failed\":false},\"healthy\":{\"enabled\":true}},\"featureFlags\":{\"failed\":\"mirror\"},\"featureFlagPayloads\":{\"failed\":\"mirror-payload\"}}"
+                );
+                if (errors.HasValue)
+                    dict["errorsWhileComputingFlags"] = errors.Value;
+
+                cache.Update(FeatureFlagsResponse.FromDictionary(dict));
+                var reloaded = new FlagCache(storage);
+                reloaded.LoadFromDisk();
+
+                foreach (var actual in new[] { cache, reloaded })
+                {
+                    Assert.Null(actual.GetFlag("failed"));
+                    Assert.Null(actual.GetPayload("failed"));
+                    Assert.DoesNotContain("failed", actual.GetAllFlagKeys());
+                    Assert.Equal(false, actual.GetFlag("disabled"));
+                    Assert.Equal(true, actual.GetFlag("healthy"));
+                    Assert.Equal(2, actual.GetAllFlagKeys().Count);
+                    Assert.NotNull(actual.GetFlagDetails("failed"));
+                }
+            }
+
+            [Theory]
+            [InlineData(true)]
+            [InlineData(false)]
+            [InlineData(null)]
+            public void Refresh_RetainsSuccessfulPairsOnlyForResponseWideErrors(bool? errors)
+            {
+                var storage = new InMemoryStorageProvider();
+                var cache = new FlagCache(storage);
+                cache.Update(
+                    FeatureFlagsResponse.FromDictionary(
+                        JsonSerializer.DeserializeDictionary(
+                            "{\"flags\":{\"variant\":{\"variant\":\"blue\",\"metadata\":{\"payload\":\"local\"}}},\"featureFlags\":{\"enabled\":true,\"disabled\":false,\"removed\":true},\"featureFlagPayloads\":{\"enabled\":\"enabled-payload\",\"disabled\":\"disabled-payload\"}}"
+                        )
+                    )
+                );
+                var dict = JsonSerializer.DeserializeDictionary(
+                    "{\"flags\":{\"variant\":{\"enabled\":false,\"failed\":true},\"enabled\":{\"enabled\":false,\"failed\":true},\"disabled\":{\"enabled\":false,\"failed\":true},\"fresh\":{\"enabled\":false}},\"featureFlags\":{\"enabled\":false},\"featureFlagPayloads\":{\"enabled\":\"bad\"}}"
+                );
+                if (errors.HasValue)
+                    dict["errorsWhileComputingFlags"] = errors.Value;
+
+                cache.Update(FeatureFlagsResponse.FromDictionary(dict));
+                var reloaded = new FlagCache(storage);
+                reloaded.LoadFromDisk();
+
+                foreach (var actual in new[] { cache, reloaded })
+                {
+                    Assert.Equal(false, actual.GetFlag("fresh"));
+                    if (errors == true)
+                    {
+                        Assert.Equal("blue", actual.GetFlag("variant"));
+                        Assert.Equal("local", actual.GetPayload("variant"));
+                        Assert.Equal(true, actual.GetFlag("enabled"));
+                        Assert.Equal("enabled-payload", actual.GetPayload("enabled"));
+                        Assert.Equal(false, actual.GetFlag("disabled"));
+                        Assert.Equal("disabled-payload", actual.GetPayload("disabled"));
+                        Assert.Equal(true, actual.GetFlag("removed"));
+                    }
+                    else
+                    {
+                        Assert.Null(actual.GetFlag("variant"));
+                        Assert.Null(actual.GetPayload("variant"));
+                        Assert.Null(actual.GetFlag("enabled"));
+                        Assert.Null(actual.GetPayload("enabled"));
+                        Assert.Null(actual.GetFlag("disabled"));
+                        Assert.Null(actual.GetPayload("disabled"));
+                        Assert.Null(actual.GetFlag("removed"));
+                    }
+                }
+            }
+
+            [Fact]
+            public void AllFailedDetails_HaveNoServedKeys()
+            {
+                var cache = new FlagCache(new InMemoryStorageProvider());
+                cache.Update(
+                    FeatureFlagsResponse.FromDictionary(
+                        JsonSerializer.DeserializeDictionary(
+                            "{\"flags\":{\"checkout\":{\"enabled\":false,\"failed\":true,\"metadata\":{\"payload\":\"bad\"}}}}"
+                        )
+                    )
+                );
+
+                Assert.Empty(cache.GetAllFlagKeys());
+                Assert.Null(cache.GetFlag("checkout"));
+                Assert.Null(cache.GetPayload("checkout"));
+            }
+
+            [Fact]
+            public void ErroredRefresh_HealthyUpdatesReplacePreviousValuesAndPayloads()
+            {
+                var cache = new FlagCache(new InMemoryStorageProvider());
+                cache.Update(
+                    FeatureFlagsResponse.FromDictionary(
+                        JsonSerializer.DeserializeDictionary(
+                            "{\"flags\":{\"flat-update\":{\"variant\":\"old\",\"metadata\":{\"payload\":\"old\"}}},\"featureFlags\":{\"detailed-update\":true},\"featureFlagPayloads\":{\"detailed-update\":\"old\"}}"
+                        )
+                    )
+                );
+                cache.Update(
+                    FeatureFlagsResponse.FromDictionary(
+                        JsonSerializer.DeserializeDictionary(
+                            "{\"errorsWhileComputingFlags\":true,\"flags\":{\"detailed-update\":{\"enabled\":false}},\"featureFlags\":{\"flat-update\":false}}"
+                        )
+                    )
+                );
+
+                Assert.Equal(false, cache.GetFlag("flat-update"));
+                Assert.Equal(false, cache.GetFlag("detailed-update"));
+                Assert.Null(cache.GetPayload("flat-update"));
+                Assert.Null(cache.GetPayload("detailed-update"));
+                Assert.Null(cache.GetFlagDetails("flat-update"));
+            }
+
             [Fact]
             public void WithResponse_UpdatesCache()
             {

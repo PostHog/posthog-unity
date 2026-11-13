@@ -568,7 +568,12 @@ namespace PostHogUnity
             // Matches iOS/Android SDK behavior.
             SetPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce);
 
+            var previousDistinctId = _identityManager.DistinctId;
             var previousAnonymousId = _identityManager.Identify(distinctId);
+            if (previousDistinctId != _identityManager.DistinctId)
+            {
+                _featureFlagManager.Clear();
+            }
 
             // Build $identify event properties
             var properties = new Dictionary<string, object>();
@@ -644,7 +649,7 @@ namespace PostHogUnity
         {
             _identityManager.Reset();
             _sessionManager.StartNewSession();
-            _featureFlagManager.ResetFlagCallTracking();
+            _featureFlagManager.Clear();
 
             // Clear cached person and group properties for flags (matches iOS/Android behavior)
             _featureFlagManager.ResetPersonPropertiesForFlags(
@@ -1036,7 +1041,10 @@ namespace PostHogUnity
             var payload = _featureFlagManager.GetPayload(key);
 
             // Track flag access for experiments
-            if (value != null && _config.SendFeatureFlagEvent)
+            if (
+                _config.SendFeatureFlagEvent
+                && (value != null || _featureFlagManager.GetFlagDetails(key)?.Failed == true)
+            )
             {
                 _featureFlagManager.TrackFlagCalled(key, value);
             }

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using PostHogUnity;
@@ -135,6 +136,693 @@ namespace PostHogUnity.Tests
                 Assert.Null(exception);
                 manager.TrackFlagCalled("beta-feature", true);
                 Assert.Equal(2, capturedFlagCalledEvents);
+            }
+        }
+
+        public class TheFeatureFlagGetters
+        {
+            static PostHogSDK CreateSdk(PostHogConfig config, FeatureFlagManager manager)
+            {
+                var sdk = (PostHogSDK)RuntimeHelpers.GetUninitializedObject(typeof(PostHogSDK));
+                typeof(PostHogSDK)
+                    .GetField("_config", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(sdk, config);
+                typeof(PostHogSDK)
+                    .GetField("_featureFlagManager", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(sdk, manager);
+                return sdk;
+            }
+
+            static void CompleteFetch(FeatureFlagManager manager, string json)
+            {
+                typeof(FeatureFlagManager)
+                    .GetMethod("OnFetchComplete", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(manager, new object[] { json, 200, null, 0L });
+            }
+
+            [Theory]
+            [InlineData(true)]
+            [InlineData(false)]
+            [InlineData("blue")]
+            public void ErroredRefresh_TracksRetainedSuccessfulValueWithoutEvaluationFailed(
+                object value
+            )
+            {
+                var captured = new List<Dictionary<string, object>>();
+                var config = new PostHogConfig { ApiKey = "test" };
+                var manager = new FeatureFlagManager(
+                    config,
+                    new InMemoryStorageProvider(),
+                    new NetworkClient(config),
+                    () => "user",
+                    () => "anon",
+                    () => new Dictionary<string, string>(),
+                    (_, properties) => captured.Add(properties)
+                );
+                CompleteFetch(
+                    manager,
+                    JsonSerializer.Serialize(
+                        new Dictionary<string, object>
+                        {
+                            ["featureFlags"] = new Dictionary<string, object>
+                            {
+                                ["checkout"] = value,
+                            },
+                            ["featureFlagPayloads"] = new Dictionary<string, object>
+                            {
+                                ["checkout"] = "successful",
+                            },
+                        }
+                    )
+                );
+                CompleteFetch(
+                    manager,
+                    "{\"errorsWhileComputingFlags\":true,\"flags\":{\"checkout\":{\"enabled\":false,\"failed\":true,\"metadata\":{\"payload\":\"bad\"}}}}"
+                );
+                var sdk = CreateSdk(config, manager);
+
+                var flag = Assert.IsType<PostHogFeatureFlag>(
+                    typeof(PostHogSDK)
+                        .GetMethod(
+                            "GetFeatureFlagInternal",
+                            BindingFlags.Instance | BindingFlags.NonPublic
+                        )
+                        .Invoke(sdk, new object[] { "checkout" })
+                );
+
+                Assert.True(flag.Value.HasValue);
+                Assert.Equal("successful", flag.GetPayload<string>());
+                var evt = Assert.Single(captured);
+                Assert.Equal(value, evt["$feature_flag_response"]);
+                Assert.Equal("errors_while_computing_flags", evt["$feature_flag_error"]);
+            }
+
+            [Theory]
+            [InlineData(true, null, true)]
+            [InlineData(false, null, true)]
+            [InlineData(null, null, true)]
+            [InlineData(true, "placeholder", true)]
+            [InlineData(false, "placeholder", true)]
+            [InlineData(null, "placeholder", true)]
+            [InlineData(true, "placeholder", false)]
+            public void FailedDetails_UseMissingResultAndEventResponseNotCallerDefault(
+                bool? errors,
+                string variant,
+                bool sendEvent
+            )
+            {
+                var captured = new List<Dictionary<string, object>>();
+                var config = new PostHogConfig
+                {
+                    ApiKey = "test",
+                    SendFeatureFlagEvent = sendEvent,
+                };
+                var manager = new FeatureFlagManager(
+                    config,
+                    new InMemoryStorageProvider(),
+                    new NetworkClient(config),
+                    () => "user",
+                    () => "anon",
+                    () => new Dictionary<string, string>(),
+                    (name, properties) =>
+                    {
+                        Assert.Equal("$feature_flag_called", name);
+                        captured.Add(properties);
+                    }
+                );
+                var response = new Dictionary<string, object>
+                {
+                    ["flags"] = new Dictionary<string, object>
+                    {
+                        ["checkout"] = new Dictionary<string, object>
+                        {
+                            ["enabled"] = false,
+                            ["failed"] = true,
+                            ["variant"] = variant,
+                            ["metadata"] = new Dictionary<string, object>
+                            {
+                                ["id"] = 42,
+                                ["version"] = 3,
+                                ["payload"] = "bad",
+                            },
+                            ["reason"] = new Dictionary<string, object>
+                            {
+                                ["description"] = "dependency error",
+                            },
+                        },
+                        ["disabled"] = new Dictionary<string, object>
+                        {
+                            ["enabled"] = false,
+                            ["failed"] = false,
+                        },
+                    },
+                    ["requestId"] = "request",
+                };
+                if (errors.HasValue)
+                    response["errorsWhileComputingFlags"] = errors.Value;
+                CompleteFetch(manager, JsonSerializer.Serialize(response));
+                var sdk = CreateSdk(config, manager);
+                var getFlag = typeof(PostHogSDK).GetMethod(
+                    "GetFeatureFlagInternal",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+                var isEnabled = typeof(PostHogSDK).GetMethod(
+                    "IsFeatureEnabledInternal",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+
+                Assert.True((bool)isEnabled.Invoke(sdk, new object[] { "checkout", true }));
+                var result = Assert.IsType<PostHogFeatureFlag>(
+                    getFlag.Invoke(sdk, new object[] { "checkout" })
+                );
+                Assert.False(result.Value.HasValue);
+                Assert.False(result.HasPayload);
+                Assert.False((bool)isEnabled.Invoke(sdk, new object[] { "disabled", true }));
+
+                if (!sendEvent)
+                {
+                    Assert.Empty(captured);
+                    return;
+                }
+                Assert.Equal(2, captured.Count);
+                var failed = captured[0];
+                Assert.Equal("", failed["$feature_flag_response"]);
+                Assert.Equal(
+                    errors == true
+                        ? "evaluation_failed,errors_while_computing_flags"
+                        : "evaluation_failed",
+                    failed["$feature_flag_error"]
+                );
+                Assert.Equal("request", failed["$feature_flag_request_id"]);
+                Assert.Equal(42, failed["$feature_flag_id"]);
+                Assert.Equal(3, failed["$feature_flag_version"]);
+                Assert.Equal("dependency error", failed["$feature_flag_reason"]);
+                Assert.Equal(false, captured[1]["$feature_flag_response"]);
+                if (errors == true)
+                    Assert.Equal(
+                        "errors_while_computing_flags",
+                        captured[1]["$feature_flag_error"]
+                    );
+                else
+                    Assert.False(captured[1].ContainsKey("$feature_flag_error"));
+            }
+        }
+
+        public class TheIdentityFlagCache
+        {
+            const string ErroredResponse =
+                "{\"errorsWhileComputingFlags\":true,\"flags\":{\"checkout\":{\"enabled\":false,\"failed\":true,\"metadata\":{\"payload\":\"bad\"}},\"healthy\":{\"enabled\":false}}}";
+
+            [Theory]
+            [InlineData(false, false, true)]
+            [InlineData(false, false, false)]
+            [InlineData(false, false, "blue")]
+            [InlineData(false, true, true)]
+            [InlineData(false, true, false)]
+            [InlineData(false, true, "blue")]
+            [InlineData(true, false, true)]
+            [InlineData(true, false, false)]
+            [InlineData(true, false, "blue")]
+            [InlineData(true, true, true)]
+            [InlineData(true, true, false)]
+            [InlineData(true, true, "blue")]
+            public async Task ErroredRefreshAfterIdentityChange_DropsPreviousValuesAndPayloads(
+                bool reset,
+                bool rich,
+                object value
+            )
+            {
+                var fixture = new IdentityFlagFixture();
+                fixture.LoadSuccessfulFlags(value, rich);
+                Assert.Equal(value, fixture.Manager.GetFlag("checkout"));
+                Assert.Equal("old-payload", fixture.Manager.GetPayload("checkout"));
+
+                if (reset)
+                    await fixture.ResetAsync();
+                else
+                    await fixture.IdentifyAsync("user-b");
+                Assert.NotEqual("user-a", fixture.Identity.DistinctId);
+
+                fixture.Fetch(ErroredResponse);
+
+                var result = fixture.ReadFlag("checkout");
+                Assert.False(result.Value.HasValue);
+                Assert.False(result.HasPayload);
+                Assert.True(fixture.IsEnabled("checkout", true));
+                Assert.True(fixture.Manager.GetFlagDetails("checkout").Failed);
+                var persisted = new FlagCache(fixture.Storage);
+                persisted.LoadFromDisk();
+                foreach (var key in new[] { "checkout", "old-only" })
+                {
+                    Assert.Null(fixture.Manager.GetFlag(key));
+                    Assert.Null(fixture.Manager.GetPayload(key));
+                    Assert.Null(persisted.GetFlag(key));
+                    Assert.Null(persisted.GetPayload(key));
+                }
+                Assert.Equal(false, fixture.Manager.GetFlag("healthy"));
+                Assert.Equal(false, persisted.GetFlag("healthy"));
+            }
+
+            [Theory]
+            [InlineData("user-a")]
+            [InlineData(null)]
+            [InlineData("")]
+            [InlineData("   ")]
+            public async Task UnchangedIdentity_PreservesSameIdentityErrorFallback(
+                string distinctId
+            )
+            {
+                var fixture = new IdentityFlagFixture();
+                fixture.LoadSuccessfulFlags(false, rich: true);
+                var pending = fixture.StartFetch(ErroredResponse);
+
+                await fixture.IdentifyAsync(distinctId);
+
+                Assert.Equal("user-a", fixture.Identity.DistinctId);
+                Assert.True(fixture.Manager.IsLoaded);
+                Assert.NotNull(fixture.Storage.LoadState("feature_flags"));
+                fixture.CompleteFetch(pending);
+                Assert.Equal(false, fixture.Manager.GetFlag("checkout"));
+                Assert.Equal("old-payload", fixture.Manager.GetPayload("checkout"));
+                Assert.Equal(false, fixture.Manager.GetFlag("healthy"));
+            }
+
+            [Theory]
+            [InlineData(false)]
+            [InlineData(true)]
+            public async Task IdentityChangeWithoutPreload_DeletesPersistedFlags(bool reset)
+            {
+                var fixture = new IdentityFlagFixture();
+                fixture.LoadSuccessfulFlags("blue", rich: true);
+
+                if (reset)
+                    await fixture.ResetAsync();
+                else
+                    await fixture.IdentifyAsync("user-b");
+
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Manager.GetFlag("checkout"));
+                Assert.Null(fixture.Manager.GetPayload("checkout"));
+                Assert.Null(fixture.Manager.GetFlagDetails("checkout"));
+                Assert.Null(fixture.Storage.LoadState("feature_flags"));
+                var persisted = new FlagCache(fixture.Storage);
+                persisted.LoadFromDisk();
+                Assert.False(persisted.IsLoaded);
+                Assert.Null(persisted.RequestId);
+                Assert.Null(persisted.EvaluatedAt);
+            }
+
+            [Theory]
+            [InlineData(false, false, false)]
+            [InlineData(true, false, false)]
+            [InlineData(true, true, false)]
+            [InlineData(false, false, true)]
+            public async Task IdentityInvalidation_FetchesCurrentIdentityBeforeSettlingCallbacks(
+                bool reset,
+                bool reuseAnonymousId,
+                bool roundTrip
+            )
+            {
+                var fixture = new IdentityFlagFixture(reuseAnonymousId);
+                if (reuseAnonymousId)
+                    await fixture.ResetAsync();
+                var originalId = fixture.Identity.DistinctId;
+                var completions = 0;
+                var loadedEvents = 0;
+                fixture.Manager.OnFeatureFlagsLoaded += () => loadedEvents++;
+                var pending = fixture.StartFetch(
+                    "{\"featureFlags\":{\"late\":true},\"featureFlagPayloads\":{\"late\":\"old-payload\"},\"requestId\":\"old-request\",\"evaluatedAt\":100}",
+                    () => completions++
+                );
+                Assert.Equal(originalId, fixture.RequestedIds.Last());
+
+                fixture.Config.PreloadFeatureFlags = true;
+                var transition = reset ? fixture.ResetAsync() : fixture.IdentifyAsync("user-b");
+                var returnTransition = roundTrip
+                    ? fixture.IdentifyAsync(originalId)
+                    : Task.CompletedTask;
+                Assert.False(transition.IsCompleted);
+                if (reuseAnonymousId || roundTrip)
+                    Assert.Equal(originalId, fixture.Identity.DistinctId);
+                else
+                    Assert.NotEqual(originalId, fixture.Identity.DistinctId);
+                var waiter = fixture.Manager.ReloadFeatureFlagsAsync(null);
+                Assert.False(waiter.IsCompleted);
+
+                fixture.CompleteResponse(pending);
+
+                Assert.False(transition.IsCompleted);
+                Assert.False(waiter.IsCompleted);
+                if (roundTrip)
+                    Assert.False(returnTransition.IsCompleted);
+                Assert.Equal(0, completions);
+                Assert.Equal(0, loadedEvents);
+                Assert.Null(fixture.Manager.GetFlag("late"));
+                Assert.Null(fixture.Manager.GetPayload("late"));
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Storage.LoadState("feature_flags"));
+
+                pending = fixture.ContinueFetch(pending, CurrentIdentityResponse);
+                Assert.Equal(2, fixture.RequestedIds.Count);
+                Assert.Equal(fixture.Identity.DistinctId, fixture.RequestedIds.Last());
+                Assert.False(transition.IsCompleted);
+                Assert.False(waiter.IsCompleted);
+                fixture.CompleteFetch(pending);
+
+                Assert.True(transition.IsCompletedSuccessfully);
+                Assert.True(returnTransition.IsCompletedSuccessfully);
+                Assert.True(waiter.IsCompletedSuccessfully);
+                await transition;
+                await returnTransition;
+                await waiter;
+                Assert.Equal(1, completions);
+                Assert.Equal(1, loadedEvents);
+                Assert.True(fixture.Manager.IsLoaded);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+                Assert.Equal("new-payload", fixture.Manager.GetPayload("current"));
+                Assert.Null(fixture.Manager.GetFlag("late"));
+                var persisted = new FlagCache(fixture.Storage);
+                persisted.LoadFromDisk();
+                Assert.Equal(false, persisted.GetFlag("current"));
+                Assert.Equal("new-payload", persisted.GetPayload("current"));
+                Assert.Null(persisted.GetFlag("late"));
+                Assert.Null(persisted.GetPayload("late"));
+                Assert.Equal("current-request", persisted.RequestId);
+                Assert.Equal(200L, persisted.EvaluatedAt);
+            }
+
+            const string CurrentIdentityResponse =
+                "{\"featureFlags\":{\"current\":false},\"featureFlagPayloads\":{\"current\":\"new-payload\"},\"requestId\":\"current-request\",\"evaluatedAt\":200}";
+
+            [Fact]
+            public async Task ConcurrentReloadsWithoutInvalidation_ShareTheCurrentRequest()
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                var first = fixture.Manager.ReloadFeatureFlagsAsync(null);
+                var second = fixture.Manager.ReloadFeatureFlagsAsync(null);
+
+                Assert.False(first.IsCompleted);
+                Assert.False(second.IsCompleted);
+                fixture.CompleteFetch(pending);
+
+                await first;
+                await second;
+                Assert.Single(fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+            }
+
+            [Theory]
+            [InlineData(false)]
+            [InlineData(true)]
+            public async Task IdentityInvalidationWithoutQueuedReload_DoesNotFetchAgain(bool reset)
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+
+                if (reset)
+                    await fixture.ResetAsync();
+                else
+                    await fixture.IdentifyAsync("user-b");
+                fixture.CompleteFetch(pending);
+
+                Assert.Single(fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Manager.GetFlag("current"));
+                Assert.Null(fixture.Storage.LoadState("feature_flags"));
+            }
+
+            [Theory]
+            [InlineData(null)]
+            [InlineData("not-json")]
+            public async Task QueuedIdentityReload_WithUnusableResponse_CompletesWithoutAnotherFetch(
+                string response
+            )
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                fixture.Config.PreloadFeatureFlags = true;
+                var transition = fixture.IdentifyAsync("user-b");
+                fixture.CompleteResponse(pending);
+                Assert.False(transition.IsCompleted);
+
+                pending = fixture.ContinueFetch(pending, response);
+                fixture.CompleteFetch(pending);
+
+                await transition;
+                Assert.Equal(new[] { "user-a", "user-b" }, fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.False(fixture.Manager.IsLoaded);
+                Assert.Null(fixture.Manager.GetFlag("current"));
+            }
+
+            [Fact]
+            public async Task QueuedIdentityReload_UsesLatestIdentityAfterAnotherInvalidation()
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                fixture.Config.PreloadFeatureFlags = true;
+                var first = fixture.IdentifyAsync("user-b");
+                fixture.CompleteResponse(pending);
+                Assert.False(first.IsCompleted);
+
+                pending = fixture.ContinueFetch(pending, "{\"featureFlags\":{\"wrong-b\":true}}");
+                var second = fixture.IdentifyAsync("user-c");
+                fixture.CompleteResponse(pending);
+                Assert.False(first.IsCompleted);
+                Assert.False(second.IsCompleted);
+                Assert.Equal(0, completions);
+                Assert.Null(fixture.Manager.GetFlag("wrong-b"));
+
+                pending = fixture.ContinueFetch(pending, CurrentIdentityResponse);
+                fixture.CompleteFetch(pending);
+
+                await first;
+                await second;
+                Assert.Equal(new[] { "user-a", "user-b", "user-c" }, fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+                Assert.Null(fixture.Manager.GetFlag("wrong-b"));
+            }
+
+            [Fact]
+            public async Task FireAndForgetReloadAfterInvalidation_RefreshesBeforeNotifying()
+            {
+                var fixture = new IdentityFlagFixture();
+                var completions = 0;
+                var pending = fixture.StartFetch(CurrentIdentityResponse, () => completions++);
+                await fixture.IdentifyAsync("user-b");
+                fixture.Manager.ReloadFeatureFlags(null);
+                fixture.CompleteResponse(pending);
+                Assert.Equal(0, completions);
+
+                pending = fixture.ContinueFetch(pending, CurrentIdentityResponse);
+                fixture.CompleteFetch(pending);
+
+                Assert.Equal(new[] { "user-a", "user-b" }, fixture.RequestedIds);
+                Assert.Equal(1, completions);
+                Assert.Equal(false, fixture.Manager.GetFlag("current"));
+            }
+
+            [Fact]
+            public async Task CustomPropertiesWithoutDefaults_AreIncludedAfterIdentityChange()
+            {
+                var fixture = new IdentityFlagFixture();
+                fixture.Manager.SetPersonPropertiesForFlags(
+                    new Dictionary<string, object> { ["plan"] = "pro", ["$lib"] = "custom" },
+                    fixture.Storage,
+                    reloadFeatureFlags: false,
+                    null
+                );
+
+                await fixture.IdentifyAsync("user-b");
+                fixture.Fetch("{\"featureFlags\":{}}");
+
+                Assert.Equal("user-b", Assert.Single(fixture.RequestedIds));
+                Assert.Equal(2, fixture.LastPersonProperties.Count);
+                Assert.Equal("pro", fixture.LastPersonProperties["plan"]);
+                Assert.Equal("custom", fixture.LastPersonProperties["$lib"]);
+            }
+
+            sealed class IdentityFlagFixture
+            {
+                readonly PostHogSDK _sdk;
+                readonly Queue<string> _responses = new();
+                public InMemoryStorageProvider Storage { get; } = new();
+                public PostHogConfig Config { get; }
+                public IdentityManager Identity { get; }
+                public FeatureFlagManager Manager { get; }
+                public List<string> RequestedIds { get; } = new();
+                public IReadOnlyDictionary<string, object> LastPersonProperties
+                {
+                    get;
+                    private set;
+                }
+
+                public IdentityFlagFixture(bool reuseAnonymousId = false)
+                {
+                    var config = Config = new PostHogConfig
+                    {
+                        ApiKey = "test",
+                        PreloadFeatureFlags = false,
+                        SendDefaultPersonPropertiesForFlags = false,
+                        SendFeatureFlagEvent = false,
+                        ReuseAnonymousId = reuseAnonymousId,
+                    };
+                    Storage.SaveState(
+                        "identity",
+                        "{\"distinctId\":\"user-a\",\"anonymousId\":\"anon-a\",\"isIdentified\":true}"
+                    );
+                    Identity = new IdentityManager(config, Storage);
+                    var network = new NetworkClient(
+                        config,
+                        (_, _, distinctId, _, _, personProperties, _) =>
+                        {
+                            RequestedIds.Add(distinctId);
+                            LastPersonProperties = personProperties;
+                            return new SuccessfulFlagsRequest(_responses.Dequeue());
+                        },
+                        _ => null
+                    );
+                    Manager = new FeatureFlagManager(
+                        config,
+                        Storage,
+                        network,
+                        () => Identity.DistinctId,
+                        () => Identity.AnonymousId,
+                        () => Identity.Groups,
+                        (_, _) => { }
+                    );
+                    _sdk = (PostHogSDK)RuntimeHelpers.GetUninitializedObject(typeof(PostHogSDK));
+                    SetSdkField("_config", config);
+                    SetSdkField("_storage", Storage);
+                    SetSdkField("_identityManager", Identity);
+                    SetSdkField("_sessionManager", new SessionManager());
+                    SetSdkField("_featureFlagManager", Manager);
+                    // Avoid native Unity capture enrichment; identity changes still execute.
+                    SetSdkField("_optedOut", true);
+                }
+
+                void SetSdkField(string name, object value) =>
+                    typeof(PostHogSDK)
+                        .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                        .SetValue(_sdk, value);
+
+                object InvokeSdk(string name, params object[] args) =>
+                    typeof(PostHogSDK)
+                        .GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(_sdk, args);
+
+                public Task IdentifyAsync(string distinctId) =>
+                    (Task)InvokeSdk("IdentifyInternalAsync", distinctId, null, null);
+
+                public Task ResetAsync() => (Task)InvokeSdk("ResetInternalAsync");
+
+                public PostHogFeatureFlag ReadFlag(string key) =>
+                    (PostHogFeatureFlag)InvokeSdk("GetFeatureFlagInternal", key);
+
+                public bool IsEnabled(string key, bool defaultValue) =>
+                    (bool)InvokeSdk("IsFeatureEnabledInternal", key, defaultValue);
+
+                public void LoadSuccessfulFlags(object value, bool rich)
+                {
+                    var response = new Dictionary<string, object>
+                    {
+                        ["featureFlags"] = new Dictionary<string, object>
+                        {
+                            ["checkout"] = value,
+                            ["old-only"] = true,
+                        },
+                        ["featureFlagPayloads"] = new Dictionary<string, object>
+                        {
+                            ["checkout"] = "old-payload",
+                            ["old-only"] = "old-only-payload",
+                        },
+                    };
+                    if (rich)
+                    {
+                        response["flags"] = new Dictionary<string, object>
+                        {
+                            ["checkout"] = new Dictionary<string, object>
+                            {
+                                [value is string ? "variant" : "enabled"] = value,
+                                ["metadata"] = new Dictionary<string, object>
+                                {
+                                    ["payload"] = "old-payload",
+                                },
+                            },
+                        };
+                    }
+                    Fetch(JsonSerializer.Serialize(response));
+                }
+
+                public void Fetch(string json) => CompleteFetch(StartFetch(json));
+
+                public (IEnumerator Outer, IEnumerator Request) StartFetch(
+                    string json,
+                    Action onComplete = null
+                )
+                {
+                    _responses.Enqueue(json);
+                    // Replace only native StartCoroutine dispatch with explicit stepping.
+                    typeof(FeatureFlagManager)
+                        .GetField("_isLoading", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .SetValue(Manager, true);
+                    var outer = (IEnumerator)
+                        typeof(FeatureFlagManager)
+                            .GetMethod(
+                                "FetchFlagsCoroutine",
+                                BindingFlags.Instance | BindingFlags.NonPublic
+                            )
+                            .Invoke(Manager, new object[] { onComplete });
+                    Assert.True(outer.MoveNext());
+                    var request = Assert.IsAssignableFrom<IEnumerator>(outer.Current);
+                    Assert.True(request.MoveNext());
+                    return (outer, request);
+                }
+
+                public void CompleteResponse((IEnumerator Outer, IEnumerator Request) pending) =>
+                    Assert.False(pending.Request.MoveNext());
+
+                public (IEnumerator Outer, IEnumerator Request) ContinueFetch(
+                    (IEnumerator Outer, IEnumerator Request) pending,
+                    string json
+                )
+                {
+                    _responses.Enqueue(json);
+                    Assert.True(pending.Outer.MoveNext());
+                    var request = Assert.IsAssignableFrom<IEnumerator>(pending.Outer.Current);
+                    Assert.True(request.MoveNext());
+                    return (pending.Outer, request);
+                }
+
+                public void CompleteFetch((IEnumerator Outer, IEnumerator Request) pending)
+                {
+                    CompleteResponse(pending);
+                    Assert.False(pending.Outer.MoveNext());
+                }
+            }
+
+            sealed class SuccessfulFlagsRequest : NetworkClient.IFeatureFlagsRequest
+            {
+                public SuccessfulFlagsRequest(string json) => Text = json;
+
+                public string Url => "https://example.com/flags";
+                public UnityEngine.Networking.UnityWebRequest.Result Result =>
+                    UnityEngine.Networking.UnityWebRequest.Result.Success;
+                public long ResponseCode => 200;
+                public string Error => null;
+                public string Text { get; }
+
+                public object Send() => null;
+
+                public void Dispose() { }
             }
         }
 
